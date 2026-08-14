@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>GPS Plan | BNI Ignite Growth CRM</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .priority-title-input { font-family: var(--font-heading); font-size: 1.15rem; font-weight: 700; border: 1px solid transparent; background: transparent; padding: 4px 6px; border-radius: 6px; width: 100%; margin-bottom: 14px; }
+  .priority-title-input:hover, .priority-title-input:focus { border-color: var(--color-border); background: var(--color-bg); }
+  .priority-num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--color-primary); color: #fff; font-size: 0.75rem; font-weight: 700; margin-right: 8px; flex-shrink: 0; }
+  .goal-edit-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-top: 14px; }
+  @media (max-width: 700px) { .goal-edit-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="wrap wrap--narrow">
+  <div class="page-header">
+    <div>
+      <p class="eyebrow">BNI Ignite · GPS Plan</p>
+      <h1>1 Goal · 3 Priorities · 5 Strategies</h1>
+      <p class="subtitle">Goals, Priorities, and Strategies for your Growth Coordinator role.</p>
+    </div>
+    <div class="header-actions">
+      <a class="btn btn--outline btn--sm" href="admin.html">Back to Dashboard</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>1. Goal</h2>
+    <div id="goal-view"><p class="empty-state">Loading…</p></div>
+    <details style="margin-top:14px;">
+      <summary style="cursor:pointer; font-size:0.85rem; font-weight:700; color: var(--color-primary);">Edit goal</summary>
+      <form id="goal-form" class="goal-edit-grid">
+        <div class="form-group" style="grid-column: 1 / -1;">
+          <label for="g-text">Goal</label>
+          <input type="text" id="g-text" required>
+        </div>
+        <div class="form-group">
+          <label for="g-start">Starting Members</label>
+          <input type="number" id="g-start" required>
+        </div>
+        <div class="form-group">
+          <label for="g-target">Target Members</label>
+          <input type="number" id="g-target" required>
+        </div>
+        <div class="form-group">
+          <label for="g-date">Target Date</label>
+          <input type="date" id="g-date" required>
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <button type="submit" class="btn btn--primary btn--sm">Save Goal</button>
+          <p class="error-msg" id="goal-error"></p>
+        </div>
+      </form>
+    </details>
+  </div>
+
+  <div id="priorities-container"><p class="empty-state">Loading priorities…</p></div>
+</div>
+
+<script src="js/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/session.js"></script>
+<script>
+  let client, profile;
+
+  function renderGoal(goal) {
+    document.getElementById('goal-view').innerHTML = `
+      <p style="font-size:1.05rem; margin:0 0 4px;">${goal.goal_text}</p>
+      <p class="hint">${goal.starting_number} &rarr; ${goal.target_number} members by ${new Date(goal.target_date + 'T00:00:00').toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+    `;
+    document.getElementById('g-text').value = goal.goal_text;
+    document.getElementById('g-start').value = goal.starting_number;
+    document.getElementById('g-target').value = goal.target_number;
+    document.getElementById('g-date').value = goal.target_date;
+  }
+
+  async function loadGoal() {
+    const { data, error } = await client.from('gps_goal').select('*').eq('id', 1).maybeSingle();
+    if (error || !data) {
+      document.getElementById('goal-view').innerHTML = '<p class="empty-state">No goal set yet. Run the gps_goal insert from schema.sql.</p>';
+      return;
+    }
+    renderGoal(data);
+  }
+
+  document.getElementById('goal-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('goal-error');
+    errEl.textContent = '';
+    const payload = {
+      goal_text: document.getElementById('g-text').value.trim(),
+      starting_number: parseInt(document.getElementById('g-start').value, 10),
+      target_number: parseInt(document.getElementById('g-target').value, 10),
+      target_date: document.getElementById('g-date').value,
+    };
+    const { error } = await client.from('gps_goal').update(payload).eq('id', 1);
+    if (error) { errEl.textContent = error.message; return; }
+    renderGoal(payload);
+  });
+
+  async function loadPriorities() {
+    const container = document.getElementById('priorities-container');
+    const [{ data: priorities, error: pErr }, { data: actions, error: aErr }] = await Promise.all([
+      client.from('gps_priorities').select('*').order('sort_order'),
+      client.from('gps_actions').select('*').order('sort_order'),
+    ]);
+
+    if (pErr || !priorities) {
+      container.innerHTML = `<p class="empty-state">Couldn't load priorities: ${pErr ? pErr.message : ''}</p>`;
+      return;
+    }
+    if (!priorities.length) {
+      container.innerHTML = '<p class="empty-state">No priorities set yet. Run the gps_priorities insert from schema.sql.</p>';
+      return;
+    }
+
+    const actionsByPriority = {};
+    (actions || []).forEach((a) => {
+      (actionsByPriority[a.priority_id] = actionsByPriority[a.priority_id] || []).push(a);
+    });
+
+    container.innerHTML = priorities.map((p, idx) => `
+      <div class="card" data-priority="${p.id}">
+        <h2>2. Priority ${idx + 1}</h2>
+        <input type="text" class="priority-title-input" data-id="${p.id}" value="${p.title}">
+        <p class="hint" style="margin-top:-8px; margin-bottom:14px;">3. Five action strategies for this priority</p>
+        <ul class="checklist">
+          ${(actionsByPriority[p.id] || []).map((a, i) => `
+            <li>
+              <span class="priority-num">${i + 1}</span>
+              <input type="checkbox" class="action-done" data-id="${a.id}" ${a.done ? 'checked' : ''}>
+              <input type="text" class="action-text" data-id="${a.id}" value="${a.text || ''}" placeholder="Strategy ${i + 1}…">
+            </li>
+          `).join('')}
+        </ul>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.priority-title-input').forEach((input) => {
+      input.addEventListener('blur', async () => {
+        await client.from('gps_priorities').update({ title: input.value.trim() }).eq('id', input.dataset.id);
+      });
+    });
+    container.querySelectorAll('.action-text').forEach((input) => {
+      input.addEventListener('blur', async () => {
+        await client.from('gps_actions').update({ text: input.value.trim() }).eq('id', input.dataset.id);
+      });
+    });
+    container.querySelectorAll('.action-done').forEach((cb) => {
+      cb.addEventListener('change', async () => {
+        await client.from('gps_actions').update({ done: cb.checked }).eq('id', cb.dataset.id);
+        cb.closest('li').querySelector('.action-text').style.textDecoration = cb.checked ? 'line-through' : 'none';
+      });
+      if (cb.checked) cb.closest('li').querySelector('.action-text').style.textDecoration = 'line-through';
+    });
+  }
+
+  (async () => {
+    try {
+      const result = await requireRole('coordinator');
+      client = result.client;
+      profile = result.profile;
+      loadGoal();
+      loadPriorities();
+    } catch (err) {
+      console.error(err.message);
+    }
+  })();
+</script>
+</body>
+</html>

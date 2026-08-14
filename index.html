@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Log In | BNI Ignite Growth CRM</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="login-card">
+  <p class="eyebrow">BNI Ignite</p>
+  <h1>Growth CRM</h1>
+  <p class="subtitle">Log in to continue.</p>
+  <form id="login-form">
+    <div class="form-group">
+      <label for="login-email">Email</label>
+      <input type="email" id="login-email" required autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label for="login-password">Password</label>
+      <input type="password" id="login-password" required autocomplete="current-password">
+    </div>
+    <button type="submit" class="btn btn--primary" style="width:100%;">Log In</button>
+    <p class="error-msg" id="login-error"></p>
+  </form>
+</div>
+
+<script src="js/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  let client = null;
+  try {
+    client = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+  } catch (err) {
+    console.error('Supabase is not configured yet:', err.message);
+  }
+
+  const loginForm = document.getElementById('login-form');
+  const loginError = document.getElementById('login-error');
+
+  async function goToRoleHome() {
+    const { data: { session } } = await client.auth.getSession();
+    if (!session) return;
+    const { data: profile, error } = await client
+      .from('profiles')
+      .select('role')
+      .eq('id', session.user.id)
+      .single();
+    if (error || !profile) {
+      loginError.textContent = "Logged in, but no profile is set up for this account yet. See README.md.";
+      await client.auth.signOut();
+      return;
+    }
+    window.location.href = profile.role === 'coordinator' ? 'admin.html' : 'caller.html';
+  }
+
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    loginError.textContent = '';
+    if (!client) {
+      loginError.textContent = "This app isn't connected yet. Add your Supabase URL/key to js/supabase-config.js.";
+      return;
+    }
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+    const { error } = await client.auth.signInWithPassword({ email, password });
+    if (error) {
+      loginError.textContent = error.message;
+      return;
+    }
+    goToRoleHome();
+  });
+
+  if (client) goToRoleHome();
+</script>
+</body>
+</html>

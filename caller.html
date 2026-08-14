@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Your Calls | BNI Ignite Growth CRM</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .contact-card { background: var(--color-card); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 18px 20px; margin-bottom: 14px; box-shadow: var(--shadow-sm); }
+  .contact-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+  .contact-card h3 { margin: 0 0 4px; font-size: 1.05rem; }
+  .contact-meta { font-size: 0.85rem; color: var(--color-text-muted); margin: 0; }
+  .contact-meta a { color: var(--color-primary); font-weight: 600; text-decoration: none; }
+  .contact-badges { display: flex; gap: 6px; align-items: center; }
+  .log-form { display: none; margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--color-border); }
+  .log-form.is-open { display: block; }
+  .hours-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+  .hours-row .form-group { flex: 1; min-width: 120px; margin-bottom: 0; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="page-header">
+    <div>
+      <p class="eyebrow">BNI Ignite</p>
+      <h1>Your Calls</h1>
+      <p class="subtitle" id="welcome-line">&nbsp;</p>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn--outline btn--sm" id="logout-btn">Log Out</button>
+    </div>
+  </div>
+
+  <div class="banner">
+    <span>📞</span>
+    <span><strong>Calling hours: 9:00 AM – 5:00 PM Eastern.</strong> Keep all calls inside that window.</span>
+  </div>
+
+  <div class="grid grid-4" id="stat-row">
+    <div class="stat-card"><div class="stat-num" id="stat-today">–</div><div class="stat-label">Calls Today</div></div>
+    <div class="stat-card"><div class="stat-num" id="stat-week">–</div><div class="stat-label">Calls This Week</div></div>
+    <div class="stat-card"><div class="stat-num" id="stat-voicemail">–</div><div class="stat-label">Voicemails This Week</div></div>
+    <div class="stat-card"><div class="stat-num" id="stat-conversations">–</div><div class="stat-label">Conversations This Week</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Your Queue</h2>
+    <div id="queue-container"><p class="empty-state">Loading your contacts…</p></div>
+  </div>
+
+  <div class="card">
+    <h2>Your Hours</h2>
+    <form id="hours-form" class="hours-row">
+      <div class="form-group">
+        <label for="hours-date">Date</label>
+        <input type="date" id="hours-date" required>
+      </div>
+      <div class="form-group">
+        <label for="hours-amount">Hours</label>
+        <input type="number" id="hours-amount" step="0.25" min="0.25" max="24" required placeholder="e.g. 3.5">
+      </div>
+      <div class="form-group" style="flex: 2;">
+        <label for="hours-note">Note (optional)</label>
+        <input type="text" id="hours-note" placeholder="e.g. Afternoon calling block">
+      </div>
+      <button type="submit" class="btn btn--primary">Log Hours</button>
+    </form>
+    <p class="error-msg" id="hours-error"></p>
+
+    <div class="grid grid-3" style="margin-top:20px;">
+      <div class="stat-card"><div class="stat-num" id="hours-month">–</div><div class="stat-label">Hours This Month</div></div>
+      <div class="stat-card"><div class="stat-num" id="hours-all-time">–</div><div class="stat-label">Hours All Time</div></div>
+      <div class="stat-card"><div class="stat-num" id="pay-month">–</div><div class="stat-label">Est. Pay This Month</div></div>
+    </div>
+
+    <div class="table-wrap" style="margin-top:20px;">
+      <table id="hours-table">
+        <thead><tr><th>Date</th><th>Hours</th><th>Note</th><th></th></tr></thead>
+        <tbody id="hours-tbody"><tr><td colspan="4" class="empty-state">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="js/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/session.js"></script>
+<script>
+  const OUTCOME_LABELS = {
+    no_answer: 'No answer',
+    left_voicemail: 'Left a voicemail',
+    reached_conversation: 'Reached them, had a conversation',
+    not_interested: 'Not interested',
+    dnc_requested: 'Asked not to be called again (DNC)',
+    accepted_invitation: 'Accepted the invitation to visit',
+    callback_requested: 'Asked for a callback',
+  };
+  const STAGE_LABELS = {
+    not_called: 'Not called yet', called: 'Called', reached: 'Reached',
+    visitor_booked: 'Visitor booked', visitor_attended: 'Visitor attended',
+    applied: 'Applied', joined: 'Joined', not_interested: 'Not interested',
+  };
+
+  let client, profile;
+  const queueContainer = document.getElementById('queue-container');
+  const hoursTbody = document.getElementById('hours-tbody');
+
+  function startOfWeek() {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(d.setDate(diff));
+    monday.setHours(0, 0, 0, 0);
+    return monday;
+  }
+  function startOfToday() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  function startOfMonth() {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  }
+
+  async function loadStats() {
+    const { data, error } = await client
+      .from('call_logs')
+      .select('outcome, called_at')
+      .eq('caller_id', profile.id);
+    if (error || !data) return;
+
+    const today = startOfToday();
+    const week = startOfWeek();
+    let today_n = 0, week_n = 0, vm_n = 0, conv_n = 0;
+    data.forEach((row) => {
+      const t = new Date(row.called_at);
+      if (t >= today) today_n++;
+      if (t >= week) {
+        week_n++;
+        if (row.outcome === 'left_voicemail') vm_n++;
+        if (row.outcome === 'reached_conversation') conv_n++;
+      }
+    });
+    document.getElementById('stat-today').textContent = today_n;
+    document.getElementById('stat-week').textContent = week_n;
+    document.getElementById('stat-voicemail').textContent = vm_n;
+    document.getElementById('stat-conversations').textContent = conv_n;
+  }
+
+  async function loadQueue() {
+    const { data, error } = await client
+      .from('contacts')
+      .select('*')
+      .eq('assigned_to', profile.id)
+      .eq('dnc', false)
+      .not('stage', 'in', '(joined,not_interested)')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      queueContainer.innerHTML = `<p class="empty-state">Couldn't load your queue: ${error.message}</p>`;
+      return;
+    }
+    if (!data.length) {
+      queueContainer.innerHTML = '<p class="empty-state">Nothing in your queue right now. Check back once new contacts are added.</p>';
+      return;
+    }
+
+    queueContainer.innerHTML = data.map((c) => `
+      <div class="contact-card" data-id="${c.id}">
+        <div class="contact-card-top">
+          <div>
+            <h3>${c.business_name}</h3>
+            <p class="contact-meta">${c.contact_name ? c.contact_name + ' · ' : ''}<a href="tel:${c.phone}">${c.phone}</a>${c.industry ? ' · ' + c.industry : ''}</p>
+          </div>
+          <div class="contact-badges">
+            <span class="badge badge--stage-${c.stage}">${STAGE_LABELS[c.stage] || c.stage}</span>
+            <button type="button" class="btn btn--accent btn--sm log-toggle">Log a call</button>
+          </div>
+        </div>
+        ${c.notes ? `<p class="hint">Notes: ${c.notes}</p>` : ''}
+        <form class="log-form">
+          <div class="form-group">
+            <label>Outcome</label>
+            <select class="log-outcome" required>
+              <option value="" disabled selected>Choose an outcome…</option>
+              ${Object.entries(OUTCOME_LABELS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Notes</label>
+            <textarea class="log-notes" placeholder="Anything worth remembering about this call"></textarea>
+          </div>
+          <div class="form-group">
+            <label>Follow-up date (optional)</label>
+            <input type="date" class="log-followup">
+          </div>
+          <button type="submit" class="btn btn--primary btn--sm">Save Call</button>
+          <p class="error-msg log-error"></p>
+        </form>
+      </div>
+    `).join('');
+
+    queueContainer.querySelectorAll('.log-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        btn.closest('.contact-card').querySelector('.log-form').classList.toggle('is-open');
+      });
+    });
+
+    queueContainer.querySelectorAll('.log-form').forEach((form) => {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const card = form.closest('.contact-card');
+        const contactId = card.dataset.id;
+        const outcome = form.querySelector('.log-outcome').value;
+        const notes = form.querySelector('.log-notes').value.trim();
+        const followUp = form.querySelector('.log-followup').value;
+        const errEl = form.querySelector('.log-error');
+        errEl.textContent = '';
+
+        const { error } = await client.from('call_logs').insert({
+          contact_id: contactId,
+          caller_id: profile.id,
+          outcome,
+          notes: notes || null,
+          follow_up_date: followUp || null,
+        });
+
+        if (error) {
+          errEl.textContent = error.message;
+          return;
+        }
+        loadQueue();
+        loadStats();
+      });
+    });
+  }
+
+  async function loadHours() {
+    const { data, error } = await client
+      .from('hours_log')
+      .select('*')
+      .eq('caller_id', profile.id)
+      .order('work_date', { ascending: false });
+
+    if (error) {
+      hoursTbody.innerHTML = `<tr><td colspan="4" class="empty-state">Couldn't load hours: ${error.message}</td></tr>`;
+      return;
+    }
+    if (!data.length) {
+      hoursTbody.innerHTML = '<tr><td colspan="4" class="empty-state">No hours logged yet.</td></tr>';
+    } else {
+      hoursTbody.innerHTML = data.map((h) => `
+        <tr>
+          <td>${h.work_date}</td>
+          <td>${Number(h.hours).toFixed(2)}</td>
+          <td>${h.note || ''}</td>
+          <td><button type="button" class="btn btn--danger btn--sm hours-delete" data-id="${h.id}">Delete</button></td>
+        </tr>
+      `).join('');
+      hoursTbody.querySelectorAll('.hours-delete').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          await client.from('hours_log').delete().eq('id', btn.dataset.id);
+          loadHours();
+        });
+      });
+    }
+
+    const monthStart = startOfMonth().toISOString().slice(0, 10);
+    let monthHours = 0, allHours = 0;
+    data.forEach((h) => {
+      allHours += Number(h.hours);
+      if (h.work_date >= monthStart) monthHours += Number(h.hours);
+    });
+    document.getElementById('hours-month').textContent = monthHours.toFixed(2);
+    document.getElementById('hours-all-time').textContent = allHours.toFixed(2);
+    const rate = Number(profile.hourly_rate || 0);
+    document.getElementById('pay-month').textContent = rate ? `$${(monthHours * rate).toFixed(2)}` : '–';
+  }
+
+  document.getElementById('hours-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('hours-error');
+    errEl.textContent = '';
+    const work_date = document.getElementById('hours-date').value;
+    const hours = parseFloat(document.getElementById('hours-amount').value);
+    const note = document.getElementById('hours-note').value.trim();
+
+    const { error } = await client.from('hours_log').insert({
+      caller_id: profile.id, work_date, hours, note: note || null,
+    });
+    if (error) {
+      errEl.textContent = error.message;
+      return;
+    }
+    document.getElementById('hours-form').reset();
+    document.getElementById('hours-date').valueAsDate = new Date();
+    loadHours();
+  });
+
+  document.getElementById('logout-btn').addEventListener('click', logout);
+
+  (async () => {
+    try {
+      const result = await requireRole('caller');
+      client = result.client;
+      profile = result.profile;
+      document.getElementById('welcome-line').textContent = `Welcome back, ${profile.full_name}.`;
+      document.getElementById('hours-date').valueAsDate = new Date();
+      loadQueue();
+      loadStats();
+      loadHours();
+    } catch (err) {
+      console.error(err.message);
+    }
+  })();
+</script>
+</body>
+</html>

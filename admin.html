@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Dashboard | BNI Ignite Growth CRM</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  details.bulk-add { margin-top: 10px; }
+  details.bulk-add summary { cursor: pointer; font-size: 0.85rem; font-weight: 700; color: var(--color-primary); }
+  .detail-row td { background: var(--color-bg-alt); }
+  .call-history-item { padding: 8px 0; border-bottom: 1px solid var(--color-border); font-size: 0.83rem; }
+  .call-history-item:last-child { border-bottom: none; }
+  .call-history-item .when { color: var(--color-text-muted); font-size: 0.76rem; }
+  .stage-select, .assign-select { font-size: 0.78rem; padding: 5px 6px; }
+  .progress-wrap { margin-top: 10px; }
+  .progress-labels { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="page-header">
+    <div>
+      <p class="eyebrow">BNI Ignite</p>
+      <h1>Growth Coordinator Dashboard</h1>
+      <p class="subtitle" id="welcome-line">&nbsp;</p>
+    </div>
+    <div class="header-actions">
+      <a class="btn btn--outline btn--sm" href="gps-plan.html">Your GPS Plan</a>
+      <button class="btn btn--outline btn--sm" id="logout-btn">Log Out</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn is-active" data-tab="dashboard">Dashboard</button>
+    <button class="tab-btn" data-tab="contacts">Contacts</button>
+    <button class="tab-btn" data-tab="dnc">DNC List</button>
+    <button class="tab-btn" data-tab="hours">Hours &amp; Pay</button>
+  </div>
+
+  <div class="tab-panel is-active" data-panel="dashboard">
+    <div class="card">
+      <h2>Chapter Growth Goal</h2>
+      <div id="goal-container"><p class="empty-state">Loading…</p></div>
+    </div>
+    <div class="card">
+      <h2>Calling Funnel</h2>
+      <div class="grid grid-4" id="funnel-grid">
+        <div class="stat-card"><div class="stat-num" id="f-calls">–</div><div class="stat-label">Calls Made</div></div>
+        <div class="stat-card"><div class="stat-num" id="f-voicemail">–</div><div class="stat-label">Voicemails Left</div></div>
+        <div class="stat-card"><div class="stat-num" id="f-conversations">–</div><div class="stat-label">Conversations</div></div>
+        <div class="stat-card"><div class="stat-num" id="f-invited">–</div><div class="stat-label">Invitations Accepted</div></div>
+        <div class="stat-card"><div class="stat-num" id="f-booked">–</div><div class="stat-label">Visitors Booked</div></div>
+        <div class="stat-card"><div class="stat-num" id="f-attended">–</div><div class="stat-label">Visitors Attended</div></div>
+        <div class="stat-card"><div class="stat-num" id="f-applied">–</div><div class="stat-label">Applied</div></div>
+        <div class="stat-card"><div class="stat-num" id="f-joined">–</div><div class="stat-label">Joined</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel="contacts">
+    <div class="card">
+      <h2>Add a Contact</h2>
+      <form id="add-contact-form" class="grid grid-2">
+        <div class="form-group">
+          <label for="c-business">Business Name</label>
+          <input type="text" id="c-business" required>
+        </div>
+        <div class="form-group">
+          <label for="c-contact-name">Contact Name</label>
+          <input type="text" id="c-contact-name">
+        </div>
+        <div class="form-group">
+          <label for="c-phone">Phone</label>
+          <input type="tel" id="c-phone" required placeholder="e.g. 727-555-0100">
+        </div>
+        <div class="form-group">
+          <label for="c-industry">Industry</label>
+          <input type="text" id="c-industry" placeholder="e.g. Roofing">
+        </div>
+        <div class="form-group">
+          <label for="c-assigned">Assign To</label>
+          <select id="c-assigned"></select>
+        </div>
+        <div class="form-group" style="grid-column: 1 / -1;">
+          <label for="c-notes">Notes (optional)</label>
+          <textarea id="c-notes"></textarea>
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <button type="submit" class="btn btn--primary">Add Contact</button>
+          <p class="error-msg" id="add-contact-error"></p>
+        </div>
+      </form>
+
+      <details class="bulk-add">
+        <summary>Bulk add multiple contacts at once</summary>
+        <div style="margin-top:12px;">
+          <p class="hint">One contact per line: Business Name, Contact Name, Phone, Industry. Contact Name and Industry can be left blank (still put the commas in), e.g.<br><code>Sunshine Roofing, Pat Reyes, 727-555-0110, Roofing</code></p>
+          <div class="form-group">
+            <textarea id="bulk-text" rows="6" placeholder="Business Name, Contact Name, Phone, Industry"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="bulk-assigned">Assign all to</label>
+            <select id="bulk-assigned"></select>
+          </div>
+          <button type="button" class="btn btn--accent" id="bulk-add-btn">Add All</button>
+          <p class="error-msg" id="bulk-add-error"></p>
+          <p class="success-msg" id="bulk-add-success"></p>
+        </div>
+      </details>
+    </div>
+
+    <div class="card">
+      <h2>All Contacts</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Business</th><th>Phone</th><th>Industry</th><th>Stage</th><th>Assigned</th><th></th></tr></thead>
+          <tbody id="contacts-tbody"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel="dnc">
+    <div class="card">
+      <h2>Do Not Call List</h2>
+      <p class="hint">These contacts are hidden from the caller's active queue. Undo requires a deliberate click, not automatic.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Business</th><th>Phone</th><th>Reason</th><th>Flagged</th><th></th></tr></thead>
+          <tbody id="dnc-tbody"><tr><td colspan="5" class="empty-state">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel="hours">
+    <div id="hours-pay-container"><p class="empty-state">Loading…</p></div>
+  </div>
+</div>
+
+<script src="js/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/session.js"></script>
+<script>
+  const STAGE_LABELS = {
+    not_called: 'Not called yet', called: 'Called', reached: 'Reached',
+    visitor_booked: 'Visitor booked', visitor_attended: 'Visitor attended',
+    applied: 'Applied', joined: 'Joined', not_interested: 'Not interested',
+  };
+  const STAGE_ORDER = ['not_called', 'called', 'reached', 'visitor_booked', 'visitor_attended', 'applied', 'joined'];
+  const OUTCOME_LABELS = {
+    no_answer: 'No answer', left_voicemail: 'Left a voicemail',
+    reached_conversation: 'Reached, had a conversation', not_interested: 'Not interested',
+    dnc_requested: 'Asked not to be called again (DNC)', accepted_invitation: 'Accepted the invitation',
+    callback_requested: 'Asked for a callback',
+  };
+
+  let client, profile, callers = [];
+
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('is-active'));
+      document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      document.querySelector(`.tab-panel[data-panel="${btn.dataset.tab}"]`).classList.add('is-active');
+      if (btn.dataset.tab === 'dashboard') loadDashboard();
+      if (btn.dataset.tab === 'contacts') loadContacts();
+      if (btn.dataset.tab === 'dnc') loadDNC();
+      if (btn.dataset.tab === 'hours') loadHoursPay();
+    });
+  });
+
+  async function loadCallers() {
+    const { data } = await client.from('profiles').select('*').eq('role', 'caller').order('full_name');
+    callers = data || [];
+    const opts = callers.map((c) => `<option value="${c.id}">${c.full_name}</option>`).join('');
+    document.getElementById('c-assigned').innerHTML = opts;
+    document.getElementById('bulk-assigned').innerHTML = opts;
+  }
+
+  // ---------- Dashboard ----------
+  async function loadDashboard() {
+    const goalContainer = document.getElementById('goal-container');
+    const [{ data: goal }, { data: contacts }, { data: logs }] = await Promise.all([
+      client.from('gps_goal').select('*').eq('id', 1).maybeSingle(),
+      client.from('contacts').select('stage'),
+      client.from('call_logs').select('outcome'),
+    ]);
+
+    const c = contacts || [];
+    const l = logs || [];
+    const atOrPast = (stage) => c.filter((x) => STAGE_ORDER.indexOf(x.stage) >= STAGE_ORDER.indexOf(stage)).length;
+
+    document.getElementById('f-calls').textContent = l.length;
+    document.getElementById('f-voicemail').textContent = l.filter((x) => x.outcome === 'left_voicemail').length;
+    document.getElementById('f-conversations').textContent = l.filter((x) => x.outcome === 'reached_conversation').length;
+    document.getElementById('f-invited').textContent = l.filter((x) => x.outcome === 'accepted_invitation').length;
+    document.getElementById('f-booked').textContent = atOrPast('visitor_booked');
+    document.getElementById('f-attended').textContent = atOrPast('visitor_attended');
+    document.getElementById('f-applied').textContent = atOrPast('applied');
+    document.getElementById('f-joined').textContent = atOrPast('joined');
+
+    if (!goal) {
+      goalContainer.innerHTML = '<p class="empty-state">No goal set yet. Run the gps_goal insert from schema.sql.</p>';
+      return;
+    }
+    const joined = atOrPast('joined');
+    const current = goal.starting_number + joined;
+    const span = goal.target_number - goal.starting_number;
+    const pct = span > 0 ? Math.min(100, Math.max(0, Math.round(((current - goal.starting_number) / span) * 100))) : 0;
+    const daysLeft = Math.ceil((new Date(goal.target_date) - new Date()) / 86400000);
+
+    goalContainer.innerHTML = `
+      <p style="font-size:1rem; margin:0 0 4px;"><strong>${current}</strong> of <strong>${goal.target_number}</strong> members</p>
+      <p class="hint">${goal.goal_text}</p>
+      <div class="progress-wrap">
+        <div class="progress-labels"><span>${goal.starting_number} start</span><span>${daysLeft >= 0 ? daysLeft + ' days left' : 'Target date passed'}</span><span>${goal.target_number} goal</span></div>
+        <div class="progress-track"><div class="progress-fill" style="width:${pct}%;"></div></div>
+      </div>
+    `;
+  }
+
+  // ---------- Contacts ----------
+  async function loadContacts() {
+    const tbody = document.getElementById('contacts-tbody');
+    const { data, error } = await client.from('contacts').select('*').order('created_at', { ascending: false });
+    if (error) {
+      tbody.innerHTML = `<tr><td colspan="6" class="empty-state">Couldn't load contacts: ${error.message}</td></tr>`;
+      return;
+    }
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No contacts yet. Add one above.</td></tr>';
+      return;
+    }
+
+    const callerOpts = (selectedId) => callers.map((c) => `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${c.full_name}</option>`).join('');
+    const stageOpts = (selected) => Object.entries(STAGE_LABELS).map(([v, l]) => `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('');
+
+    tbody.innerHTML = data.map((c) => `
+      <tr data-row="${c.id}">
+        <td>${c.business_name}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}</td>
+        <td><a href="tel:${c.phone}">${c.phone}</a></td>
+        <td>${c.industry || ''}</td>
+        <td><select class="stage-select" data-id="${c.id}">${stageOpts(c.stage)}</select></td>
+        <td><select class="assign-select" data-id="${c.id}">${callerOpts(c.assigned_to)}</select></td>
+        <td><button type="button" class="btn btn--outline btn--sm view-toggle" data-id="${c.id}">View</button></td>
+      </tr>
+      <tr class="detail-row" data-detail="${c.id}" style="display:none;">
+        <td colspan="6">
+          ${c.notes ? `<p class="hint" style="margin-top:0;"><strong>Notes:</strong> ${c.notes}</p>` : ''}
+          <div class="call-history" data-history="${c.id}"><p class="hint">Loading call history…</p></div>
+        </td>
+      </tr>
+    `).join('');
+
+    tbody.querySelectorAll('.stage-select').forEach((sel) => {
+      sel.addEventListener('change', async (e) => {
+        await client.from('contacts').update({ stage: e.target.value }).eq('id', e.target.dataset.id);
+        loadDashboard();
+      });
+    });
+    tbody.querySelectorAll('.assign-select').forEach((sel) => {
+      sel.addEventListener('change', async (e) => {
+        await client.from('contacts').update({ assigned_to: e.target.value }).eq('id', e.target.dataset.id);
+      });
+    });
+    tbody.querySelectorAll('.view-toggle').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const row = tbody.querySelector(`.detail-row[data-detail="${btn.dataset.id}"]`);
+        const showing = row.style.display !== 'none';
+        row.style.display = showing ? 'none' : 'table-row';
+        btn.textContent = showing ? 'View' : 'Hide';
+        if (!showing) {
+          const histEl = row.querySelector('.call-history');
+          const { data: history, error } = await client
+            .from('call_logs').select('*').eq('contact_id', btn.dataset.id)
+            .order('called_at', { ascending: false });
+          if (error) {
+            histEl.innerHTML = `<p class="hint">Couldn't load history: ${error.message}</p>`;
+          } else if (!history.length) {
+            histEl.innerHTML = '<p class="hint">No calls logged yet.</p>';
+          } else {
+            histEl.innerHTML = history.map((h) => `
+              <div class="call-history-item">
+                <div class="when">${new Date(h.called_at).toLocaleString()}</div>
+                <strong>${OUTCOME_LABELS[h.outcome] || h.outcome}</strong>
+                ${h.notes ? `<div>${h.notes}</div>` : ''}
+                ${h.follow_up_date ? `<div class="hint">Follow up: ${h.follow_up_date}</div>` : ''}
+              </div>
+            `).join('');
+          }
+        }
+      });
+    });
+  }
+
+  document.getElementById('add-contact-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('add-contact-error');
+    errEl.textContent = '';
+    const assigned = document.getElementById('c-assigned').value;
+    if (!assigned) { errEl.textContent = 'Add a caller profile before adding contacts (see README.md).'; return; }
+
+    const { error } = await client.from('contacts').insert({
+      business_name: document.getElementById('c-business').value.trim(),
+      contact_name: document.getElementById('c-contact-name').value.trim() || null,
+      phone: document.getElementById('c-phone').value.trim(),
+      industry: document.getElementById('c-industry').value.trim() || null,
+      notes: document.getElementById('c-notes').value.trim() || null,
+      assigned_to: assigned,
+    });
+    if (error) { errEl.textContent = error.message; return; }
+    document.getElementById('add-contact-form').reset();
+    loadContacts();
+  });
+
+  document.getElementById('bulk-add-btn').addEventListener('click', async () => {
+    const errEl = document.getElementById('bulk-add-error');
+    const okEl = document.getElementById('bulk-add-success');
+    errEl.textContent = '';
+    okEl.textContent = '';
+    const assigned = document.getElementById('bulk-assigned').value;
+    if (!assigned) { errEl.textContent = 'Add a caller profile before adding contacts (see README.md).'; return; }
+
+    const lines = document.getElementById('bulk-text').value.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) { errEl.textContent = 'Paste at least one line.'; return; }
+
+    const rows = lines.map((line) => {
+      const parts = line.split(',').map((p) => p.trim());
+      return {
+        business_name: parts[0] || '',
+        contact_name: parts[1] || null,
+        phone: parts[2] || '',
+        industry: parts[3] || null,
+        assigned_to: assigned,
+      };
+    }).filter((r) => r.business_name && r.phone);
+
+    if (!rows.length) { errEl.textContent = "Couldn't find any valid rows (need at least a business name and phone)."; return; }
+
+    const { error } = await client.from('contacts').insert(rows);
+    if (error) { errEl.textContent = error.message; return; }
+    okEl.textContent = `Added ${rows.length} contact(s).`;
+    document.getElementById('bulk-text').value = '';
+    loadContacts();
+  });
+
+  // ---------- DNC ----------
+  async function loadDNC() {
+    const tbody = document.getElementById('dnc-tbody');
+    const { data, error } = await client.from('contacts').select('*').eq('dnc', true).order('dnc_at', { ascending: false });
+    if (error) {
+      tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Couldn't load: ${error.message}</td></tr>`;
+      return;
+    }
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nobody on the DNC list.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map((c) => `
+      <tr>
+        <td>${c.business_name}</td>
+        <td>${c.phone}</td>
+        <td>${c.dnc_reason || ''}</td>
+        <td>${c.dnc_at ? new Date(c.dnc_at).toLocaleDateString() : ''}</td>
+        <td><button type="button" class="btn btn--outline btn--sm undo-dnc" data-id="${c.id}">Undo DNC</button></td>
+      </tr>
+    `).join('');
+    tbody.querySelectorAll('.undo-dnc').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Remove this business from the Do Not Call list?')) return;
+        await client.from('contacts').update({ dnc: false, dnc_reason: null, dnc_at: null }).eq('id', btn.dataset.id);
+        loadDNC();
+      });
+    });
+  }
+
+  // ---------- Hours & Pay ----------
+  async function loadHoursPay() {
+    const container = document.getElementById('hours-pay-container');
+    if (!callers.length) {
+      container.innerHTML = '<p class="empty-state">No caller profiles yet. See README.md to add one.</p>';
+      return;
+    }
+
+    const blocks = await Promise.all(callers.map(async (caller) => {
+      const { data: hours } = await client.from('hours_log').select('*').eq('caller_id', caller.id).order('work_date', { ascending: false });
+      const h = hours || [];
+      const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+      const monthStr = monthStart.toISOString().slice(0, 10);
+      let monthHours = 0, allHours = 0;
+      h.forEach((row) => { allHours += Number(row.hours); if (row.work_date >= monthStr) monthHours += Number(row.hours); });
+      const rate = Number(caller.hourly_rate || 0);
+
+      return `
+        <div class="card">
+          <h2>${caller.full_name}</h2>
+          <div class="grid grid-2" style="align-items:end; margin-bottom:16px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label>Hourly Rate ($)</label>
+              <input type="number" step="0.01" min="0" class="rate-input" data-id="${caller.id}" value="${caller.hourly_rate || ''}">
+            </div>
+            <div><button type="button" class="btn btn--outline btn--sm save-rate" data-id="${caller.id}">Save Rate</button></div>
+          </div>
+          <div class="grid grid-4">
+            <div class="stat-card"><div class="stat-num">${monthHours.toFixed(2)}</div><div class="stat-label">Hours This Month</div></div>
+            <div class="stat-card"><div class="stat-num">${allHours.toFixed(2)}</div><div class="stat-label">Hours All Time</div></div>
+            <div class="stat-card"><div class="stat-num">${rate ? '$' + (monthHours * rate).toFixed(2) : '–'}</div><div class="stat-label">Owed This Month</div></div>
+            <div class="stat-card"><div class="stat-num">${rate ? '$' + (allHours * rate).toFixed(2) : '–'}</div><div class="stat-label">Owed All Time</div></div>
+          </div>
+          <div class="table-wrap" style="margin-top:16px;">
+            <table>
+              <thead><tr><th>Date</th><th>Hours</th><th>Note</th></tr></thead>
+              <tbody>${h.length ? h.map((row) => `<tr><td>${row.work_date}</td><td>${Number(row.hours).toFixed(2)}</td><td>${row.note || ''}</td></tr>`).join('') : '<tr><td colspan="3" class="empty-state">No hours logged yet.</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }));
+
+    container.innerHTML = blocks.join('');
+    container.querySelectorAll('.save-rate').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const input = container.querySelector(`.rate-input[data-id="${btn.dataset.id}"]`);
+        await client.from('profiles').update({ hourly_rate: parseFloat(input.value) || null }).eq('id', btn.dataset.id);
+        loadHoursPay();
+      });
+    });
+  }
+
+  document.getElementById('logout-btn').addEventListener('click', logout);
+
+  (async () => {
+    try {
+      const result = await requireRole('coordinator');
+      client = result.client;
+      profile = result.profile;
+      document.getElementById('welcome-line').textContent = `Welcome back, ${profile.full_name}.`;
+      await loadCallers();
+      loadDashboard();
+    } catch (err) {
+      console.error(err.message);
+    }
+  })();
+</script>
+</body>
+</html>
