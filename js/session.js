@@ -9,11 +9,10 @@ try {
   console.error('Supabase is not configured yet:', err.message);
 }
 
-// Confirms a logged-in session exists and its profile has the required
-// role, redirecting otherwise. Resolves to {client, session, profile} when
-// everything checks out — pages should await this before doing anything
-// else that touches data.
-async function requireRole(requiredRole) {
+// Confirms a logged-in session exists and returns its profile, no role
+// check. For pages both roles can land on (gps-plan.html — each person
+// views/edits their own plan there).
+async function requireSession() {
   if (!supabaseClient) {
     document.body.innerHTML = '<div class="wrap"><p class="error-msg">This page is not connected yet. Add your Supabase URL/key to js/supabase-config.js.</p></div>';
     throw new Error('Supabase not configured');
@@ -37,12 +36,18 @@ async function requireRole(requiredRole) {
     throw new Error('No profile found for this user');
   }
 
-  if (profile.role !== requiredRole) {
-    window.location.href = profile.role === 'coordinator' ? 'admin.html' : 'caller.html';
+  return { client: supabaseClient, session, profile };
+}
+
+// Same as above, but redirects away if the profile's role doesn't match —
+// for caller.html / admin.html, which are strictly role-specific.
+async function requireRole(requiredRole) {
+  const result = await requireSession();
+  if (result.profile.role !== requiredRole) {
+    window.location.href = result.profile.role === 'coordinator' ? 'admin.html' : 'caller.html';
     throw new Error('Wrong role for this page');
   }
-
-  return { client: supabaseClient, session, profile };
+  return result;
 }
 
 async function logout() {

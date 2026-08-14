@@ -186,20 +186,23 @@ create policy "caller manages her own hours"
   with check (caller_id = auth.uid());
 
 -- ============================================================================
--- GPS (Goals, Priorities, Strategies) plan -- Derrick's own 1-3-5. Coordinator
--- only; this is his personal planning tool, not something the caller needs.
+-- GPS (Goals, Priorities, Strategies) plans -- everyone's own 1-3-5, owned
+-- per-person (owner_id). The app auto-creates a blank goal + 3 priorities +
+-- 5 action slots each the first time a person opens gps-plan.html, so there's
+-- no seed data to insert here. A coordinator can read (not edit) anyone's
+-- plan; each person fully manages only their own.
 -- ============================================================================
 create table if not exists gps_goal (
-  id int primary key default 1,
+  owner_id uuid primary key references profiles(id),
   goal_text text not null,
   starting_number int not null,
   target_number int not null,
-  target_date date not null,
-  constraint gps_goal_single_row check (id = 1)
+  target_date date not null
 );
 
 create table if not exists gps_priorities (
   id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references profiles(id),
   title text not null,
   sort_order int not null
 );
@@ -216,27 +219,19 @@ alter table gps_goal enable row level security;
 alter table gps_priorities enable row level security;
 alter table gps_actions enable row level security;
 
-create policy "coordinator full access to gps_goal"
-  on gps_goal for all to authenticated using (is_coordinator()) with check (is_coordinator());
-create policy "coordinator full access to gps_priorities"
-  on gps_priorities for all to authenticated using (is_coordinator()) with check (is_coordinator());
-create policy "coordinator full access to gps_actions"
-  on gps_actions for all to authenticated using (is_coordinator()) with check (is_coordinator());
+create policy "owner manages own goal" on gps_goal for all
+  to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "coordinator reads all goals" on gps_goal for select
+  to authenticated using (is_coordinator());
 
--- Seed the goal and the 3 priorities x 5 action slots. Edit goal_text /
--- target_date here if your numbers change before you run this.
-insert into gps_goal (id, goal_text, starting_number, target_number, target_date)
-values (1, 'Grow BNI Ignite from 21 to 35 members', 21, 35, '2027-08-13')
-on conflict (id) do nothing;
+create policy "owner manages own priorities" on gps_priorities for all
+  to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "coordinator reads all priorities" on gps_priorities for select
+  to authenticated using (is_coordinator());
 
-insert into gps_priorities (title, sort_order) values
-  ('Coach the caller', 1),
-  ('Monthly BNI Growth Coordinator mastermind', 2),
-  ('Member vlogs for retention', 3)
-on conflict do nothing;
-
-insert into gps_actions (priority_id, sort_order)
-select p.id, s.n
-from gps_priorities p
-cross join generate_series(1, 5) as s(n)
-where not exists (select 1 from gps_actions a where a.priority_id = p.id);
+create policy "owner manages own actions" on gps_actions for all
+  to authenticated
+  using (exists (select 1 from gps_priorities p where p.id = priority_id and p.owner_id = auth.uid()))
+  with check (exists (select 1 from gps_priorities p where p.id = priority_id and p.owner_id = auth.uid()));
+create policy "coordinator reads all actions" on gps_actions for select
+  to authenticated using (is_coordinator());

@@ -38,6 +38,7 @@
     <button class="tab-btn" data-tab="contacts">Contacts</button>
     <button class="tab-btn" data-tab="dnc">DNC List</button>
     <button class="tab-btn" data-tab="hours">Hours &amp; Pay</button>
+    <button class="tab-btn" data-tab="team">Team</button>
   </div>
 
   <div class="tab-panel is-active" data-panel="dashboard">
@@ -139,6 +140,53 @@
   <div class="tab-panel" data-panel="hours">
     <div id="hours-pay-container"><p class="empty-state">Loading…</p></div>
   </div>
+
+  <div class="tab-panel" data-panel="team">
+    <div class="card">
+      <h2>Add a Team Member</h2>
+      <p class="hint" style="margin-top:-6px;">Creates a real login for them, no Supabase dashboard needed.</p>
+      <form id="add-team-form" class="grid grid-2">
+        <div class="form-group">
+          <label for="t-name">Full Name</label>
+          <input type="text" id="t-name" required>
+        </div>
+        <div class="form-group">
+          <label for="t-email">Email</label>
+          <input type="email" id="t-email" required>
+        </div>
+        <div class="form-group">
+          <label for="t-password">Temporary Password</label>
+          <input type="password" id="t-password" required minlength="8" placeholder="At least 8 characters">
+        </div>
+        <div class="form-group">
+          <label for="t-role">Role</label>
+          <select id="t-role">
+            <option value="caller">Caller</option>
+            <option value="coordinator">Administrator</option>
+          </select>
+        </div>
+        <div class="form-group" id="t-rate-group">
+          <label for="t-rate">Hourly Rate ($, optional)</label>
+          <input type="number" step="0.01" min="0" id="t-rate">
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <button type="submit" class="btn btn--primary">Create Login</button>
+          <p class="error-msg" id="add-team-error"></p>
+          <p class="success-msg" id="add-team-success"></p>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Everyone With Access</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Role</th><th>Hourly Rate</th><th></th></tr></thead>
+          <tbody id="team-tbody"><tr><td colspan="4" class="empty-state">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script src="js/supabase-config.js"></script>
@@ -170,7 +218,12 @@
       if (btn.dataset.tab === 'contacts') loadContacts();
       if (btn.dataset.tab === 'dnc') loadDNC();
       if (btn.dataset.tab === 'hours') loadHoursPay();
+      if (btn.dataset.tab === 'team') loadTeam();
     });
+  });
+
+  document.getElementById('t-role').addEventListener('change', (e) => {
+    document.getElementById('t-rate-group').style.display = e.target.value === 'caller' ? 'block' : 'none';
   });
 
   async function loadCallers() {
@@ -430,6 +483,89 @@
       });
     });
   }
+
+  // ---------- Team ----------
+  async function loadTeam() {
+    const tbody = document.getElementById('team-tbody');
+    const { data, error } = await client.from('profiles').select('*').order('role').order('full_name');
+    if (error) {
+      tbody.innerHTML = `<tr><td colspan="4" class="empty-state">Couldn't load team: ${error.message}</td></tr>`;
+      return;
+    }
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Nobody set up yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.map((p) => `
+      <tr data-id="${p.id}">
+        <td><input type="text" class="member-name" data-id="${p.id}" value="${p.full_name}" style="min-width:160px;"></td>
+        <td>
+          <select class="member-role" data-id="${p.id}">
+            <option value="caller" ${p.role === 'caller' ? 'selected' : ''}>Caller</option>
+            <option value="coordinator" ${p.role === 'coordinator' ? 'selected' : ''}>Administrator</option>
+          </select>
+        </td>
+        <td><input type="number" step="0.01" min="0" class="member-rate" data-id="${p.id}" value="${p.hourly_rate || ''}" style="max-width:100px;" ${p.role === 'coordinator' ? 'disabled' : ''}></td>
+        <td><a class="btn btn--outline btn--sm" href="gps-plan.html?user=${p.id}">View GPS Plan</a></td>
+      </tr>
+    `).join('');
+
+    tbody.querySelectorAll('.member-name').forEach((input) => {
+      input.addEventListener('blur', async () => {
+        await client.from('profiles').update({ full_name: input.value.trim() }).eq('id', input.dataset.id);
+      });
+    });
+    tbody.querySelectorAll('.member-role').forEach((sel) => {
+      sel.addEventListener('change', async (e) => {
+        await client.from('profiles').update({ role: e.target.value }).eq('id', e.target.dataset.id);
+        loadTeam();
+        loadCallers();
+      });
+    });
+    tbody.querySelectorAll('.member-rate').forEach((input) => {
+      input.addEventListener('blur', async () => {
+        await client.from('profiles').update({ hourly_rate: parseFloat(input.value) || null }).eq('id', input.dataset.id);
+      });
+    });
+  }
+
+  document.getElementById('add-team-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('add-team-error');
+    const okEl = document.getElementById('add-team-success');
+    errEl.textContent = '';
+    okEl.textContent = '';
+
+    const { data: { session } } = await client.auth.getSession();
+    const body = {
+      full_name: document.getElementById('t-name').value.trim(),
+      email: document.getElementById('t-email').value.trim(),
+      password: document.getElementById('t-password').value,
+      role: document.getElementById('t-role').value,
+      hourly_rate: parseFloat(document.getElementById('t-rate').value) || null,
+    };
+
+    let result;
+    try {
+      const res = await fetch('/api/create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify(body),
+      });
+      result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Something went wrong.');
+    } catch (err) {
+      errEl.textContent = err.message;
+      return;
+    }
+
+    okEl.textContent = `${body.full_name} can now log in.`;
+    document.getElementById('add-team-form').reset();
+    document.getElementById('t-rate-group').style.display = 'block';
+    loadTeam();
+    loadCallers();
+  });
 
   document.getElementById('logout-btn').addEventListener('click', logout);
 

@@ -33,48 +33,72 @@ until then you'll see a "not connected yet" message, which is expected.
   → 35 members by 2027-08-13) and your three priorities. Edit the
   `gps_goal`/`gps_priorities` insert statements at the bottom of the file
   first if any of those numbers or titles need to change.
-- Authentication → Users → **Add User**, twice: once for you, once for your
-  caller. Set a real password for each (share hers with her directly,
-  outside this file). Copy each person's **User UID** after creating them —
-  you'll need both in the next step.
-- SQL Editor again → run this once, filling in the two UIDs you just copied:
+- Authentication → Users → **Add User**, just for yourself (your one
+  bootstrap account — every other login gets created from the Team tab once
+  you're in, see below). Copy your **User UID** after creating it.
+- SQL Editor again → run this once, filling in the UID you just copied:
 
   ```sql
   insert into profiles (id, full_name, role, hourly_rate) values
-    ('paste-your-own-uid-here', 'Derrick McKenzie', 'coordinator', null),
-    ('paste-her-uid-here', 'Her Name', 'caller', 20.00);
+    ('paste-your-own-uid-here', 'Derrick McKenzie', 'coordinator', null);
   ```
-
-  (Set the hourly rate to whatever you're actually paying — it drives the
-  "amount owed" numbers on the Hours & Pay tab. You can also change it later
-  right from that tab.)
-- Project Settings → API → copy the **Project URL** and **anon public key**
-  into `js/supabase-config.js` (both values, one file, shared by every page).
+- Project Settings → API → copy the **Project URL**, **anon public key**,
+  and **service_role key** (three values total, the service_role one is
+  separate from and more powerful than the anon key — keep it secret).
+  Project URL + anon key go into `js/supabase-config.js`. The service_role
+  key does **not** go in any file that gets committed — see the Netlify
+  environment variables step below instead.
 
 ### 2. Netlify (hosting)
 
-Same pattern as your other sites: push this folder to a new GitHub repo,
-connect it to a new Netlify site for continuous deployment. Say the word and
-I'll set that part up once you're ready to go live — it doesn't need
-anything from you except a green light.
+Live at **bni-ignite-crm.netlify.app**, continuous deployment from
+`github.com/AugustHill/bni-ignite-crm` — every push to `main` auto-deploys.
+
+Adding team members from the app (instead of the Supabase dashboard) needs
+one function to run, which needs its own two environment variables (Site
+configuration → Environment variables in the Netlify dashboard, not in any
+file — this keeps the powerful service_role key out of the codebase and out
+of chat):
+- `SUPABASE_URL` — same value as in `js/supabase-config.js`
+- `SUPABASE_SERVICE_ROLE_KEY` — the service_role key from Supabase's API
+  settings (see step 1 above)
+
+After adding those, a redeploy is needed for them to take effect — tell me
+once they're set and I'll trigger one.
+
+### 3. Catching up an already-running install
+
+If you set this project up before 2026-08-14, run
+`supabase/migration_002_team_and_personal_gps.sql` once in the SQL Editor.
+It makes GPS plans per-person instead of one shared plan (needed for the
+Team tab's "View GPS Plan" links) and doesn't touch any existing data other
+than tagging your current goal/priorities as yours. Safe to run once; running
+it twice is harmless too (every step checks before it acts).
 
 ## How the pieces fit together
 
 - **`index.html`** — the only login page. After signing in, it checks your
   role in `profiles` and sends you to `caller.html` or `admin.html`
-  automatically. There's no public sign-up page on purpose, since it's just
-  the two of you — accounts only get created the way described above.
+  automatically. There's still no public sign-up page — every login gets
+  created deliberately, either your one bootstrap account (above) or through
+  the Team tab from here on.
 - **`caller.html`** — her queue of assigned contacts, a log-a-call form
-  (outcome, notes, optional follow-up date), and her self-reported hours.
-  Logging an outcome of "asked not to be called again" flags that contact
-  DNC automatically and it drops out of her queue from then on — reversible
-  only from your DNC tab, not from her side.
-- **`admin.html`** — your Dashboard (calling funnel + progress toward the
-  35-member goal), Contacts (add one at a time or paste many at once),
-  DNC List, and Hours & Pay (her rate, hours, and amount owed).
-- **`gps-plan.html`** — your 1-3-5: the goal at the top, then your three
-  priorities each broken into five strategies you can fill in and check off
-  as you go. Linked from the top of `admin.html`.
+  (outcome, notes, optional follow-up date), her self-reported hours, and a
+  link to her own GPS plan. Logging an outcome of "asked not to be called
+  again" flags that contact DNC automatically and it drops out of her queue
+  from then on — reversible only from your DNC tab, not from her side.
+- **`admin.html`** — Dashboard (calling funnel + progress toward the
+  35-member goal), Contacts (add one at a time or paste many at once), DNC
+  List, Hours & Pay (rate, hours, and amount owed per person), and **Team**
+  (everyone with a login — edit name/role/rate inline, view anyone's GPS
+  plan, add a new caller or administrator with a real working login on the
+  spot).
+- **`gps-plan.html`** — everyone's own 1-3-5: the goal at the top, then
+  three priorities each broken into five strategies, fill in and check off
+  as you go. Each person gets their own automatically the first time they
+  open it. A coordinator can open anyone's via the "View GPS Plan" link on
+  the Team tab — read-only, since it's that person's plan to fill in, not
+  yours to edit for them.
 
 ## Not built yet, on purpose
 
