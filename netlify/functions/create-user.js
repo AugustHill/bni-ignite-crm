@@ -3,6 +3,13 @@
 // creating an auth user isn't something the anon key / RLS can do, since
 // it bypasses row-level security by design. Kept server-side only; the
 // service-role key never reaches the browser.
+
+// Public by design (same value already shipped in js/supabase-config.js to
+// every visitor) -- used below specifically for the "who is this token"
+// check, since that's the standard apikey pairing for validating a user's
+// own token, rather than reusing the service-role key for it.
+const SUPABASE_ANON_KEY = 'sb_publishable_Ibp__Tt0wKL-Gk6LDbaZXw_dqubi4JD';
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
@@ -24,12 +31,16 @@ exports.handler = async (event) => {
       return { statusCode: 401, body: JSON.stringify({ error: 'Missing authorization.' }) };
     }
 
-    // Confirm the token belongs to a real, currently logged-in user.
+    // Confirm the token belongs to a real, currently logged-in user. Uses
+    // the anon key here (not service-role) -- that's the standard pairing
+    // for "whose token is this", service-role is reserved for the
+    // elevated admin calls further down.
     const whoResponse = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
     });
     if (!whoResponse.ok) {
-      return { statusCode: 401, body: JSON.stringify({ error: 'Invalid or expired session.' }) };
+      const whoErrText = await whoResponse.text();
+      return { statusCode: 401, body: JSON.stringify({ error: `Invalid or expired session (Supabase said: ${whoErrText.slice(0, 200)}).` }) };
     }
     const requester = await whoResponse.json();
 
@@ -38,7 +49,10 @@ exports.handler = async (event) => {
       headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
     });
     const roleRows = await roleResponse.json();
-    if (!roleResponse.ok || !roleRows.length || !['owner', 'coordinator'].includes(roleRows[0].role)) {
+    if (!roleResponse.ok) {
+      return { statusCode: 502, body: JSON.stringify({ error: `Couldn't look up your role: ${JSON.stringify(roleRows).slice(0, 200)}` }) };
+    }
+    if (!roleRows.length || !['owner', 'coordinator'].includes(roleRows[0].role)) {
       return { statusCode: 403, body: JSON.stringify({ error: 'Only an administrator can add team members.' }) };
     }
 
