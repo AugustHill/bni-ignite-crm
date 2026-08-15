@@ -29,6 +29,7 @@
     </div>
     <div class="header-actions">
       <a class="btn btn--outline btn--sm" href="gps-plan.html">Your GPS Plan</a>
+      <a class="btn btn--outline btn--sm" href="account.html">Account</a>
       <button class="btn btn--outline btn--sm" id="logout-btn">Log Out</button>
     </div>
   </div>
@@ -299,7 +300,10 @@
         <td>${c.industry || ''}</td>
         <td><select class="stage-select" data-id="${c.id}">${stageOpts(c.stage)}</select></td>
         <td><select class="assign-select" data-id="${c.id}">${callerOpts(c.assigned_to)}</select></td>
-        <td><button type="button" class="btn btn--outline btn--sm view-toggle" data-id="${c.id}">View</button></td>
+        <td style="white-space:nowrap;">
+          <button type="button" class="btn btn--outline btn--sm view-toggle" data-id="${c.id}">View</button>
+          <button type="button" class="btn btn--danger btn--sm delete-contact" data-id="${c.id}" data-name="${c.business_name}">Delete</button>
+        </td>
       </tr>
       <tr class="detail-row" data-detail="${c.id}" style="display:none;">
         <td colspan="6">
@@ -346,6 +350,15 @@
             `).join('');
           }
         }
+      });
+    });
+
+    tbody.querySelectorAll('.delete-contact').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`Delete ${btn.dataset.name}? This also removes every call logged against them. This can't be undone.`)) return;
+        await client.from('contacts').delete().eq('id', btn.dataset.id);
+        loadContacts();
+        loadDashboard();
       });
     });
   }
@@ -434,12 +447,19 @@
   // ---------- Hours & Pay ----------
   async function loadHoursPay() {
     const container = document.getElementById('hours-pay-container');
-    if (!callers.length) {
-      container.innerHTML = '<p class="empty-state">No caller profiles yet. See README.md to add one.</p>';
+    // Fetches fresh rather than reusing the shared `callers` array — that
+    // array only gets refreshed in a few specific spots, and rendering this
+    // tab from a stale copy of it is what made rate/name edits look like
+    // they "reverted" (the database write succeeded; the redraw just used
+    // old in-memory data).
+    const { data: hoursCallers } = await client.from('profiles').select('*').eq('role', 'caller').order('full_name');
+
+    if (!hoursCallers || !hoursCallers.length) {
+      container.innerHTML = '<p class="empty-state">No caller profiles yet. Add one from the Team tab.</p>';
       return;
     }
 
-    const blocks = await Promise.all(callers.map(async (caller) => {
+    const blocks = await Promise.all(hoursCallers.map(async (caller) => {
       const { data: hours } = await client.from('hours_log').select('*').eq('caller_id', caller.id).order('work_date', { ascending: false });
       const h = hours || [];
       const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
@@ -479,6 +499,7 @@
       btn.addEventListener('click', async () => {
         const input = container.querySelector(`.rate-input[data-id="${btn.dataset.id}"]`);
         await client.from('profiles').update({ hourly_rate: parseFloat(input.value) || null }).eq('id', btn.dataset.id);
+        loadCallers();
         loadHoursPay();
       });
     });
@@ -514,6 +535,7 @@
     tbody.querySelectorAll('.member-name').forEach((input) => {
       input.addEventListener('blur', async () => {
         await client.from('profiles').update({ full_name: input.value.trim() }).eq('id', input.dataset.id);
+        loadCallers();
       });
     });
     tbody.querySelectorAll('.member-role').forEach((sel) => {
@@ -526,6 +548,7 @@
     tbody.querySelectorAll('.member-rate').forEach((input) => {
       input.addEventListener('blur', async () => {
         await client.from('profiles').update({ hourly_rate: parseFloat(input.value) || null }).eq('id', input.dataset.id);
+        loadCallers();
       });
     });
   }

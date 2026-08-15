@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Your Account | BNI Ignite Growth CRM</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="wrap wrap--narrow">
+  <div class="page-header">
+    <div>
+      <p class="eyebrow">BNI Ignite</p>
+      <h1>Your Account</h1>
+      <p class="subtitle" id="welcome-line">&nbsp;</p>
+    </div>
+    <div class="header-actions">
+      <a class="btn btn--outline btn--sm" id="back-link" href="index.html">Back</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Change Password</h2>
+    <form id="password-form">
+      <div class="form-group">
+        <label for="new-password">New Password</label>
+        <input type="password" id="new-password" required minlength="8" autocomplete="new-password">
+        <p class="hint">At least 8 characters.</p>
+      </div>
+      <div class="form-group">
+        <label for="confirm-password">Confirm New Password</label>
+        <input type="password" id="confirm-password" required minlength="8" autocomplete="new-password">
+      </div>
+      <button type="submit" class="btn btn--primary">Update Password</button>
+      <p class="error-msg" id="password-error"></p>
+      <p class="success-msg" id="password-success"></p>
+    </form>
+  </div>
+</div>
+
+<script src="js/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/session.js"></script>
+<script>
+  let client, profile;
+
+  document.getElementById('password-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('password-error');
+    const okEl = document.getElementById('password-success');
+    errEl.textContent = '';
+    okEl.textContent = '';
+
+    const pw1 = document.getElementById('new-password').value;
+    const pw2 = document.getElementById('confirm-password').value;
+    if (pw1 !== pw2) {
+      errEl.textContent = "Those two passwords don't match.";
+      return;
+    }
+
+    const { error } = await client.auth.updateUser({ password: pw1 });
+    if (error) {
+      errEl.textContent = error.message;
+      return;
+    }
+    okEl.textContent = 'Password updated.';
+    document.getElementById('password-form').reset();
+  });
+
+  (async () => {
+    try {
+      const result = await requireSession();
+      client = result.client;
+      profile = result.profile;
+      document.getElementById('welcome-line').textContent = profile.full_name;
+      document.getElementById('back-link').href = profile.role === 'coordinator' ? 'admin.html' : 'caller.html';
+    } catch (err) {
+      console.error(err.message);
+    }
+  })();
+</script>
+</body>
+</html>
