@@ -20,6 +20,7 @@
 <body>
 
 <div class="wrap wrap--narrow">
+  <div class="presence-bar" id="presence-bar"></div>
   <div class="page-header">
     <div>
       <p class="eyebrow" id="page-eyebrow">BNI Ignite · GPS Plan</p>
@@ -222,6 +223,7 @@
       const result = await requireSession();
       client = result.client;
       profile = result.profile;
+      initPresence(client, profile);
 
       const params = new URLSearchParams(window.location.search);
       const requestedId = params.get('user');

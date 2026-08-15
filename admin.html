@@ -21,6 +21,7 @@
 <body>
 
 <div class="wrap">
+  <div class="presence-bar" id="presence-bar"></div>
   <div class="page-header">
     <div>
       <p class="eyebrow">BNI Ignite</p>
@@ -118,6 +119,13 @@
           <button type="button" class="btn btn--accent" id="bulk-add-btn">Add All</button>
           <p class="error-msg" id="bulk-add-error"></p>
           <p class="success-msg" id="bulk-add-success"></p>
+
+          <p class="hint" style="margin-top:20px; padding-top:16px; border-top:1px dashed var(--color-border);">Or upload a CSV file with the same columns in order (Business Name, Contact Name, Phone, Industry). A header row is fine, it's detected and skipped automatically.</p>
+          <div class="form-group">
+            <input type="file" id="csv-file" accept=".csv,text/csv">
+          </div>
+          <p class="error-msg" id="csv-error"></p>
+          <p class="success-msg" id="csv-success"></p>
         </div>
       </details>
     </div>
@@ -435,6 +443,84 @@
     loadContacts();
   });
 
+  // Handles quoted fields with embedded commas (e.g. a business name like
+  // "Smith, Jones & Co"), which real CSV exports from Excel/Sheets commonly
+  // have and a plain .split(',') would mangle.
+  function parseCsvLine(line) {
+    const cells = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (line[i + 1] === '"') { cur += '"'; i++; }
+          else { inQuotes = false; }
+        } else {
+          cur += ch;
+        }
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        cells.push(cur);
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    cells.push(cur);
+    return cells.map((c) => c.trim());
+  }
+
+  document.getElementById('csv-file').addEventListener('change', async (e) => {
+    const errEl = document.getElementById('csv-error');
+    const okEl = document.getElementById('csv-success');
+    errEl.textContent = '';
+    okEl.textContent = '';
+
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const assigned = document.getElementById('bulk-assigned').value;
+    if (!assigned) {
+      errEl.textContent = 'Add a caller profile before adding contacts (see README.md).';
+      e.target.value = '';
+      return;
+    }
+
+    const text = await file.text();
+    let lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    e.target.value = '';
+
+    if (!lines.length) { errEl.textContent = 'That file looks empty.'; return; }
+
+    const firstLower = lines[0].toLowerCase();
+    if (firstLower.includes('business') || firstLower.includes('phone')) {
+      lines = lines.slice(1);
+    }
+
+    const rows = lines.map((line) => {
+      const cells = parseCsvLine(line);
+      return {
+        business_name: cells[0] || '',
+        contact_name: cells[1] || null,
+        phone: cells[2] || '',
+        industry: cells[3] || null,
+        assigned_to: assigned,
+      };
+    }).filter((r) => r.business_name && r.phone);
+
+    if (!rows.length) {
+      errEl.textContent = "Couldn't find any valid rows in that file (need at least a business name and phone).";
+      return;
+    }
+
+    const { error } = await client.from('contacts').insert(rows);
+    if (error) { errEl.textContent = error.message; return; }
+    okEl.textContent = `Added ${rows.length} contact(s) from the file.`;
+    loadContacts();
+  });
+
   // ---------- DNC ----------
   async function loadDNC() {
     const tbody = document.getElementById('dnc-tbody');
@@ -639,6 +725,7 @@
       profile = result.profile;
       document.getElementById('welcome-line').textContent = `Welcome back, ${profile.full_name}.`;
       if (profile.role === 'owner') document.getElementById('private-link').style.display = 'inline-flex';
+      initPresence(client, profile);
       await loadCallers();
       loadDashboard();
     } catch (err) {

@@ -10,6 +10,7 @@
 <body>
 
 <div class="wrap wrap--narrow">
+  <div class="presence-bar" id="presence-bar"></div>
   <div class="page-header">
     <div>
       <p class="eyebrow">BNI Ignite</p>
@@ -75,7 +76,8 @@
       client = result.client;
       profile = result.profile;
       document.getElementById('welcome-line').textContent = profile.full_name;
-      document.getElementById('back-link').href = profile.role === 'coordinator' ? 'admin.html' : 'caller.html';
+      document.getElementById('back-link').href = profile.role === 'caller' ? 'caller.html' : 'admin.html';
+      initPresence(client, profile);
     } catch (err) {
       console.error(err.message);
     }

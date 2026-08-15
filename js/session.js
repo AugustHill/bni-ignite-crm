@@ -59,3 +59,38 @@ async function logout() {
   if (supabaseClient) await supabaseClient.auth.signOut();
   window.location.href = 'index.html';
 }
+
+// "Who's online" — a Realtime Presence channel shared by every logged-in
+// page. No table/migration involved, Presence is a broadcast-style channel
+// independent of Postgres replication. Renders into a #presence-bar element
+// each page provides; automatically drops someone the instant their tab
+// disconnects (no heartbeat/expiry logic needed, that's built into how
+// Presence channels work).
+function initPresence(client, profile) {
+  const container = document.getElementById('presence-bar');
+  if (!container) return;
+
+  function initials(name) {
+    return (name || '?').trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+  }
+
+  const channel = client.channel('online-users', {
+    config: { presence: { key: profile.id } },
+  });
+
+  channel.on('presence', { event: 'sync' }, () => {
+    const state = channel.presenceState();
+    const people = Object.values(state).map((entries) => entries[0]);
+    container.innerHTML = people.map((p) => `
+      <span class="presence-chip" title="${p.full_name}">
+        <span class="presence-avatar">${initials(p.full_name)}</span>${p.full_name}
+      </span>
+    `).join('');
+  });
+
+  channel.subscribe(async (status) => {
+    if (status === 'SUBSCRIBED') {
+      await channel.track({ full_name: profile.full_name, role: profile.role });
+    }
+  });
+}
