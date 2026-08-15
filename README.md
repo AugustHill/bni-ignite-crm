@@ -87,6 +87,10 @@ database, neither touches existing data beyond tagging ownership:
   added to Personal / Medium, nothing to lose.
 - `supabase/migration_005_lead_temperature.sql` — adds a warm/cold
   descriptor to contacts. Backfills existing contacts to Cold.
+- `supabase/migration_006_contact_creator_tracking.sql` — lets a caller
+  add her own contacts (assigned to herself only), and tracks who added
+  each contact. Existing contacts show as "Unknown" for who added them,
+  there's no way to know that retroactively.
 
 ## How the pieces fit together
 

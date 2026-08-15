@@ -80,6 +80,7 @@ create table if not exists contacts (
   dnc_reason text,
   dnc_at timestamptz,
   assigned_to uuid references profiles(id),
+  created_by uuid references profiles(id) default auth.uid(),
   source text not null default 'manual',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -97,6 +98,11 @@ create policy "caller reads her assigned contacts"
   on contacts for select
   to authenticated
   using (assigned_to = auth.uid());
+
+create policy "caller adds contacts assigned to herself"
+  on contacts for insert
+  to authenticated
+  with check (assigned_to = auth.uid());
 
 -- ============================================================================
 -- call_logs: one row per call attempt. This is the caller's real write

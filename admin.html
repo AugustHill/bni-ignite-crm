@@ -288,7 +288,7 @@
   // ---------- Contacts ----------
   async function loadContacts() {
     const tbody = document.getElementById('contacts-tbody');
-    const { data, error } = await client.from('contacts').select('*').order('created_at', { ascending: false });
+    const { data, error } = await client.from('contacts').select('*, creator:profiles!created_by(full_name)').order('created_at', { ascending: false });
     if (error) {
       tbody.innerHTML = `<tr><td colspan="7" class="empty-state">Couldn't load contacts: ${error.message}</td></tr>`;
       return;
@@ -321,7 +321,8 @@
       </tr>
       <tr class="detail-row" data-detail="${c.id}" style="display:none;">
         <td colspan="7">
-          ${c.notes ? `<p class="hint" style="margin-top:0;"><strong>Notes:</strong> ${c.notes}</p>` : ''}
+          <p class="hint" style="margin-top:0;">Added by ${c.creator ? c.creator.full_name : 'Unknown'} on ${new Date(c.created_at).toLocaleString()}</p>
+          ${c.notes ? `<p class="hint"><strong>Notes:</strong> ${c.notes}</p>` : ''}
           <div class="call-history" data-history="${c.id}"><p class="hint">Loading call history…</p></div>
         </td>
       </tr>

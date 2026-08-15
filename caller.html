@@ -48,6 +48,39 @@
   </div>
 
   <div class="card">
+    <h2>Add a Contact</h2>
+    <form id="add-contact-form" class="grid grid-2">
+      <div class="form-group">
+        <label for="ac-business">Business Name</label>
+        <input type="text" id="ac-business" required>
+      </div>
+      <div class="form-group">
+        <label for="ac-contact-name">Contact Name</label>
+        <input type="text" id="ac-contact-name">
+      </div>
+      <div class="form-group">
+        <label for="ac-phone">Phone</label>
+        <input type="tel" id="ac-phone" required placeholder="e.g. 727-555-0100">
+      </div>
+      <div class="form-group">
+        <label for="ac-industry">Industry</label>
+        <input type="text" id="ac-industry" placeholder="e.g. Roofing">
+      </div>
+      <div class="form-group">
+        <label for="ac-temperature">Lead Type</label>
+        <select id="ac-temperature">
+          <option value="cold" selected>Cold</option>
+          <option value="warm">Warm</option>
+        </select>
+      </div>
+      <div style="grid-column: 1 / -1;">
+        <button type="submit" class="btn btn--primary">Add Contact</button>
+        <p class="error-msg" id="add-contact-error"></p>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
     <h2>Your Queue</h2>
     <div id="queue-container"><p class="empty-state">Loading your contacts…</p></div>
   </div>
@@ -301,6 +334,25 @@
     document.getElementById('hours-form').reset();
     document.getElementById('hours-date').valueAsDate = new Date();
     loadHours();
+  });
+
+  document.getElementById('add-contact-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('add-contact-error');
+    errEl.textContent = '';
+
+    const { error } = await client.from('contacts').insert({
+      business_name: document.getElementById('ac-business').value.trim(),
+      contact_name: document.getElementById('ac-contact-name').value.trim() || null,
+      phone: document.getElementById('ac-phone').value.trim(),
+      industry: document.getElementById('ac-industry').value.trim() || null,
+      lead_temperature: document.getElementById('ac-temperature').value,
+      assigned_to: profile.id,
+    });
+
+    if (error) { errEl.textContent = error.message; return; }
+    document.getElementById('add-contact-form').reset();
+    loadQueue();
   });
 
   document.getElementById('logout-btn').addEventListener('click', logout);
