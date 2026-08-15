@@ -70,6 +70,7 @@ create table if not exists contacts (
   contact_name text,
   phone text not null,
   industry text,
+  lead_temperature text not null default 'cold' check (lead_temperature in ('warm', 'cold')),
   notes text,
   stage text not null default 'not_called' check (stage in (
     'not_called', 'called', 'reached', 'visitor_booked', 'visitor_attended',

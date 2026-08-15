@@ -85,6 +85,8 @@ database, neither touches existing data beyond tagging ownership:
 - `supabase/migration_004_todo_category_priority.sql` — adds category and
   priority to the private to-do list. Backfills any tasks you'd already
   added to Personal / Medium, nothing to lose.
+- `supabase/migration_005_lead_temperature.sql` — adds a warm/cold
+  descriptor to contacts. Backfills existing contacts to Cold.
 
 ## How the pieces fit together
 

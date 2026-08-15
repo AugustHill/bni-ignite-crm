@@ -13,7 +13,7 @@
   .call-history-item { padding: 8px 0; border-bottom: 1px solid var(--color-border); font-size: 0.83rem; }
   .call-history-item:last-child { border-bottom: none; }
   .call-history-item .when { color: var(--color-text-muted); font-size: 0.76rem; }
-  .stage-select, .assign-select { font-size: 0.78rem; padding: 5px 6px; }
+  .stage-select, .assign-select, .temperature-select { font-size: 0.78rem; padding: 5px 6px; }
   .progress-wrap { margin-top: 10px; }
   .progress-labels { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 6px; }
 </style>
@@ -84,6 +84,13 @@
           <input type="text" id="c-industry" placeholder="e.g. Roofing">
         </div>
         <div class="form-group">
+          <label for="c-temperature">Lead Type</label>
+          <select id="c-temperature">
+            <option value="cold" selected>Cold</option>
+            <option value="warm">Warm</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label for="c-assigned">Assign To</label>
           <select id="c-assigned"></select>
         </div>
@@ -119,8 +126,8 @@
       <h2>All Contacts</h2>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Business</th><th>Phone</th><th>Industry</th><th>Stage</th><th>Assigned</th><th></th></tr></thead>
-          <tbody id="contacts-tbody"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody>
+          <thead><tr><th>Business</th><th>Phone</th><th>Industry</th><th>Type</th><th>Stage</th><th>Assigned</th><th></th></tr></thead>
+          <tbody id="contacts-tbody"><tr><td colspan="7" class="empty-state">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -283,11 +290,11 @@
     const tbody = document.getElementById('contacts-tbody');
     const { data, error } = await client.from('contacts').select('*').order('created_at', { ascending: false });
     if (error) {
-      tbody.innerHTML = `<tr><td colspan="6" class="empty-state">Couldn't load contacts: ${error.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" class="empty-state">Couldn't load contacts: ${error.message}</td></tr>`;
       return;
     }
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No contacts yet. Add one above.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No contacts yet. Add one above.</td></tr>';
       return;
     }
 
@@ -299,6 +306,12 @@
         <td>${c.business_name}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}</td>
         <td><a href="tel:${c.phone}">${c.phone}</a></td>
         <td>${c.industry || ''}</td>
+        <td>
+          <select class="temperature-select" data-id="${c.id}">
+            <option value="cold" ${c.lead_temperature === 'cold' ? 'selected' : ''}>Cold</option>
+            <option value="warm" ${c.lead_temperature === 'warm' ? 'selected' : ''}>Warm</option>
+          </select>
+        </td>
         <td><select class="stage-select" data-id="${c.id}">${stageOpts(c.stage)}</select></td>
         <td><select class="assign-select" data-id="${c.id}">${callerOpts(c.assigned_to)}</select></td>
         <td style="white-space:nowrap;">
@@ -307,7 +320,7 @@
         </td>
       </tr>
       <tr class="detail-row" data-detail="${c.id}" style="display:none;">
-        <td colspan="6">
+        <td colspan="7">
           ${c.notes ? `<p class="hint" style="margin-top:0;"><strong>Notes:</strong> ${c.notes}</p>` : ''}
           <div class="call-history" data-history="${c.id}"><p class="hint">Loading call history…</p></div>
         </td>
@@ -318,6 +331,11 @@
       sel.addEventListener('change', async (e) => {
         await client.from('contacts').update({ stage: e.target.value }).eq('id', e.target.dataset.id);
         loadDashboard();
+      });
+    });
+    tbody.querySelectorAll('.temperature-select').forEach((sel) => {
+      sel.addEventListener('change', async (e) => {
+        await client.from('contacts').update({ lead_temperature: e.target.value }).eq('id', e.target.dataset.id);
       });
     });
     tbody.querySelectorAll('.assign-select').forEach((sel) => {
@@ -376,6 +394,7 @@
       contact_name: document.getElementById('c-contact-name').value.trim() || null,
       phone: document.getElementById('c-phone').value.trim(),
       industry: document.getElementById('c-industry').value.trim() || null,
+      lead_temperature: document.getElementById('c-temperature').value,
       notes: document.getElementById('c-notes').value.trim() || null,
       assigned_to: assigned,
     });

@@ -178,6 +178,7 @@
             <p class="contact-meta">${c.contact_name ? c.contact_name + ' · ' : ''}<a href="tel:${c.phone}">${c.phone}</a>${c.industry ? ' · ' + c.industry : ''}</p>
           </div>
           <div class="contact-badges">
+            <span class="badge badge--${c.lead_temperature}">${c.lead_temperature === 'warm' ? 'Warm' : 'Cold'}</span>
             <span class="badge badge--stage-${c.stage}">${STAGE_LABELS[c.stage] || c.stage}</span>
             <button type="button" class="btn btn--accent btn--sm log-toggle">Log a call</button>
           </div>

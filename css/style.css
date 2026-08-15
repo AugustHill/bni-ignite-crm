@@ -135,12 +135,16 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 .badge--stage-joined { background: var(--color-primary); color: #fff; }
 .badge--stage-not_interested { background: var(--color-bg-alt); color: var(--color-text-muted); }
 .badge--dnc { background: var(--color-danger-bg); color: var(--color-danger); }
+.badge--warm { background: #fde4d2; color: #943c05; }
+.badge--cold { background: #dcebfa; color: #1c5f8c; }
 @media (prefers-color-scheme: dark) {
   .badge--stage-called { background: #223b30; color: #a9d4bd; }
   .badge--stage-reached { background: #1c3350; color: #a9c9f0; }
   .badge--stage-visitor_booked { background: #4a3a15; color: #f0cf8f; }
   .badge--stage-visitor_attended { background: #4a3116; color: #f0bd8f; }
   .badge--stage-applied { background: #362250; color: #cbb2f0; }
+  .badge--warm { background: #4a2f15; color: #f0a868; }
+  .badge--cold { background: #1c3350; color: #a9c9f0; }
 }
 
 table { width: 100%; border-collapse: collapse; }
