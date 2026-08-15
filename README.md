@@ -40,8 +40,13 @@ until then you'll see a "not connected yet" message, which is expected.
 
   ```sql
   insert into profiles (id, full_name, role, hourly_rate) values
-    ('paste-your-own-uid-here', 'Derrick McKenzie', 'coordinator', null);
+    ('paste-your-own-uid-here', 'Derrick McKenzie', 'owner', null);
   ```
+
+  (`owner` is the one-per-install tier — everything a `coordinator` can do,
+  plus the private area described below. Any team member you add later from
+  the Team tab is a `coordinator` or `caller`; `owner` isn't offered there
+  on purpose.)
 - Project Settings → API → copy the **Project URL**, **anon public key**,
   and **service_role key** (three values total, the service_role one is
   separate from and more powerful than the anon key — keep it secret).
@@ -68,12 +73,15 @@ once they're set and I'll trigger one.
 
 ### 3. Catching up an already-running install
 
-If you set this project up before 2026-08-14, run
-`supabase/migration_002_team_and_personal_gps.sql` once in the SQL Editor.
-It makes GPS plans per-person instead of one shared plan (needed for the
-Team tab's "View GPS Plan" links) and doesn't touch any existing data other
-than tagging your current goal/priorities as yours. Safe to run once; running
-it twice is harmless too (every step checks before it acts).
+Run these once each, in order, in the SQL Editor — both are safe on a live
+database, neither touches existing data beyond tagging ownership:
+
+- `supabase/migration_002_team_and_personal_gps.sql` — makes GPS plans
+  per-person instead of one shared plan.
+- `supabase/migration_003_owner_role_and_private_space.sql` — adds the
+  `owner` role tier and promotes your account to it by email, and adds the
+  private to-do list. Skip this one if you haven't hit "owner" anywhere
+  yet (older setups than 2026-08-14).
 
 ## How the pieces fit together
 
@@ -92,7 +100,11 @@ it twice is harmless too (every step checks before it acts).
   List, Hours & Pay (rate, hours, and amount owed per person), and **Team**
   (everyone with a login — edit name/role/rate inline, view anyone's GPS
   plan, add a new caller or administrator with a real working login on the
-  spot).
+  spot). The owner sees an extra **Private** button in the header that no
+  one else gets.
+- **`private.html`** — owner-only (enforced by RLS, not just a hidden
+  button): a to-do list, plus a link to the owner's own GPS plan. Room to
+  add more here later.
 - **`gps-plan.html`** — everyone's own 1-3-5: the goal at the top, then
   three priorities each broken into five strategies, fill in and check off
   as you go. Each person gets their own automatically the first time they

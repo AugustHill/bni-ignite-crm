@@ -29,6 +29,7 @@
     </div>
     <div class="header-actions">
       <a class="btn btn--outline btn--sm" href="gps-plan.html">Your GPS Plan</a>
+      <a class="btn btn--accent btn--sm" href="private.html" id="private-link" style="display:none;">Private</a>
       <a class="btn btn--outline btn--sm" href="account.html">Account</a>
       <button class="btn btn--outline btn--sm" id="logout-btn">Log Out</button>
     </div>
@@ -518,19 +519,33 @@
       return;
     }
 
-    tbody.innerHTML = data.map((p) => `
-      <tr data-id="${p.id}">
-        <td><input type="text" class="member-name" data-id="${p.id}" value="${p.full_name}" style="min-width:160px;"></td>
-        <td>
-          <select class="member-role" data-id="${p.id}">
+    tbody.innerHTML = data.map((p) => {
+      // Owner isn't an assignable role from this dropdown (only ever one
+      // owner, promoted directly in SQL) — show a plain badge instead so
+      // it can't be misread as "Caller" (the dropdown's first option) or
+      // accidentally reassigned by an idle click.
+      const roleCell = p.role === 'owner'
+        ? '<span class="badge badge--stage-joined">Owner</span>'
+        : `<select class="member-role" data-id="${p.id}">
             <option value="caller" ${p.role === 'caller' ? 'selected' : ''}>Caller</option>
             <option value="coordinator" ${p.role === 'coordinator' ? 'selected' : ''}>Administrator</option>
-          </select>
-        </td>
-        <td><input type="number" step="0.01" min="0" class="member-rate" data-id="${p.id}" value="${p.hourly_rate || ''}" style="max-width:100px;" ${p.role === 'coordinator' ? 'disabled' : ''}></td>
-        <td><a class="btn btn--outline btn--sm" href="gps-plan.html?user=${p.id}">View GPS Plan</a></td>
+          </select>`;
+
+      // Nobody but the owner can open the owner's own GPS plan — matches
+      // the RLS policy, shown here too so the link isn't a dead end.
+      const planCell = (p.role === 'owner' && p.id !== profile.id)
+        ? '<span class="hint">Private</span>'
+        : `<a class="btn btn--outline btn--sm" href="gps-plan.html?user=${p.id}">View GPS Plan</a>`;
+
+      return `
+      <tr data-id="${p.id}">
+        <td><input type="text" class="member-name" data-id="${p.id}" value="${p.full_name}" style="min-width:160px;"></td>
+        <td>${roleCell}</td>
+        <td><input type="number" step="0.01" min="0" class="member-rate" data-id="${p.id}" value="${p.hourly_rate || ''}" style="max-width:100px;" ${p.role !== 'caller' ? 'disabled' : ''}></td>
+        <td>${planCell}</td>
       </tr>
-    `).join('');
+    `;
+    }).join('');
 
     tbody.querySelectorAll('.member-name').forEach((input) => {
       input.addEventListener('blur', async () => {
@@ -598,6 +613,7 @@
       client = result.client;
       profile = result.profile;
       document.getElementById('welcome-line').textContent = `Welcome back, ${profile.full_name}.`;
+      if (profile.role === 'owner') document.getElementById('private-link').style.display = 'inline-flex';
       await loadCallers();
       loadDashboard();
     } catch (err) {

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Private | BNI Ignite Growth CRM</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .todo-add-form { display: flex; gap: 10px; margin-bottom: 16px; }
+  .todo-add-form input { flex: 1; }
+  .todo-list { list-style: none; margin: 0; padding: 0; }
+  .todo-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--color-border); gap: 12px; }
+  .todo-item:last-child { border-bottom: none; }
+  .todo-item label { display: flex; align-items: center; gap: 12px; font-size: 0.92rem; cursor: pointer; flex: 1; }
+  .todo-item.is-done span { text-decoration: line-through; color: var(--color-text-muted); }
+  .todo-delete { color: var(--color-text-muted); font-size: 1.3rem; line-height: 1; padding: 4px 8px; flex-shrink: 0; }
+  .todo-delete:hover { color: var(--color-danger); }
+</style>
+</head>
+<body>
+
+<div class="wrap wrap--narrow">
+  <div class="page-header">
+    <div>
+      <p class="eyebrow">BNI Ignite · Private</p>
+      <h1>Just for You</h1>
+      <p class="subtitle">Nobody else with access to this site, including other administrators, can see this page.</p>
+    </div>
+    <div class="header-actions">
+      <a class="btn btn--outline btn--sm" href="admin.html">Back to Dashboard</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>To-Do</h2>
+    <form id="todo-add-form" class="todo-add-form">
+      <input type="text" id="todo-input" placeholder="Add a task…" required>
+      <button type="submit" class="btn btn--accent">Add</button>
+    </form>
+    <ul id="todos-list" class="todo-list"></ul>
+  </div>
+
+  <div class="card">
+    <h2>Your GPS Plan</h2>
+    <p class="hint" style="margin-top:-6px;">Your 1-3-5 lives on its own page since it's shared code with everyone else's plan — this is still the private copy, other administrators can't read yours (see the last update).</p>
+    <a class="btn btn--outline btn--sm" href="gps-plan.html">Open Your GPS Plan</a>
+  </div>
+</div>
+
+<script src="js/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/session.js"></script>
+<script>
+  let client, profile;
+  const todosList = document.getElementById('todos-list');
+
+  async function loadTodos() {
+    const { data, error } = await client.from('private_todos').select('*').order('sort_order').order('created_at');
+    if (error) {
+      todosList.innerHTML = `<li class="empty-state">Couldn't load: ${error.message}</li>`;
+      return;
+    }
+    if (!data.length) {
+      todosList.innerHTML = '<li class="empty-state">Nothing on your list yet.</li>';
+      return;
+    }
+
+    todosList.innerHTML = data.map((t) => `
+      <li class="todo-item ${t.done ? 'is-done' : ''}">
+        <label>
+          <input type="checkbox" class="todo-check" data-id="${t.id}" ${t.done ? 'checked' : ''}>
+          <span>${t.text}</span>
+        </label>
+        <button type="button" class="todo-delete" data-id="${t.id}" aria-label="Delete task">&times;</button>
+      </li>
+    `).join('');
+
+    todosList.querySelectorAll('.todo-check').forEach((cb) => {
+      cb.addEventListener('change', async (e) => {
+        await client.from('private_todos').update({ done: e.target.checked }).eq('id', e.target.dataset.id);
+        loadTodos();
+      });
+    });
+    todosList.querySelectorAll('.todo-delete').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        await client.from('private_todos').delete().eq('id', e.target.dataset.id);
+        loadTodos();
+      });
+    });
+  }
+
+  document.getElementById('todo-add-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = document.getElementById('todo-input');
+    const text = input.value.trim();
+    if (!text) return;
+    await client.from('private_todos').insert({ text });
+    input.value = '';
+    loadTodos();
+  });
+
+  (async () => {
+    try {
+      const result = await requireRole('owner');
+      client = result.client;
+      profile = result.profile;
+      loadTodos();
+    } catch (err) {
+      console.error(err.message);
+    }
+  })();
+</script>
+</body>
+</html>

@@ -40,11 +40,16 @@ async function requireSession() {
 }
 
 // Same as above, but redirects away if the profile's role doesn't match —
-// for caller.html / admin.html, which are strictly role-specific.
+// for caller.html / admin.html / private.html, which are role-specific.
+// 'owner' is a superset of 'coordinator' (same dashboard, plus more), so a
+// page that requires 'coordinator' also accepts 'owner'. Nothing supersedes
+// 'owner' itself — that's the one check that stays an exact match.
 async function requireRole(requiredRole) {
   const result = await requireSession();
-  if (result.profile.role !== requiredRole) {
-    window.location.href = result.profile.role === 'coordinator' ? 'admin.html' : 'caller.html';
+  const role = result.profile.role;
+  const ok = role === requiredRole || (requiredRole === 'coordinator' && role === 'owner');
+  if (!ok) {
+    window.location.href = role === 'caller' ? 'caller.html' : 'admin.html';
     throw new Error('Wrong role for this page');
   }
   return result;

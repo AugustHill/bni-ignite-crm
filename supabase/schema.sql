@@ -11,16 +11,19 @@
 create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   full_name text not null,
-  role text not null check (role in ('coordinator', 'caller')),
+  role text not null check (role in ('owner', 'coordinator', 'caller')),
   hourly_rate numeric(10,2),
   created_at timestamptz not null default now()
 );
 
 alter table profiles enable row level security;
 
--- security definer function so policies can check "is this user a
--- coordinator" without the check itself recursing back into a profiles
--- policy (a classic RLS gotcha on self-referencing tables).
+-- security definer function so policies can check "is this user any kind
+-- of admin" without the check itself recursing back into a profiles policy
+-- (a classic RLS gotcha on self-referencing tables). Despite the name, this
+-- returns true for 'owner' too -- owner is a superset of coordinator
+-- everywhere except the owner's own private area (is_owner(), below), kept
+-- as one function rather than updating every policy that references it.
 create or replace function is_coordinator()
 returns boolean
 language sql
@@ -28,8 +31,19 @@ security definer
 stable
 as $$
   select exists (
-    select 1 from profiles where id = auth.uid() and role = 'coordinator'
+    select 1 from profiles where id = auth.uid() and role in ('owner', 'coordinator')
   );
+$$;
+
+-- For the one tier that's genuinely owner-only: the private area, and
+-- excluding the owner's own GPS plan from what other admins can read.
+create or replace function is_owner()
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select exists (select 1 from profiles where id = auth.uid() and role = 'owner');
 $$;
 
 create policy "read own profile or all if coordinator"
@@ -221,17 +235,48 @@ alter table gps_actions enable row level security;
 
 create policy "owner manages own goal" on gps_goal for all
   to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
-create policy "coordinator reads all goals" on gps_goal for select
-  to authenticated using (is_coordinator());
+create policy "coordinator reads non-owner goals" on gps_goal for select
+  to authenticated using (
+    is_coordinator() and not exists (
+      select 1 from profiles p where p.id = gps_goal.owner_id and p.role = 'owner'
+    )
+  );
 
 create policy "owner manages own priorities" on gps_priorities for all
   to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
-create policy "coordinator reads all priorities" on gps_priorities for select
-  to authenticated using (is_coordinator());
+create policy "coordinator reads non-owner priorities" on gps_priorities for select
+  to authenticated using (
+    is_coordinator() and not exists (
+      select 1 from profiles p where p.id = gps_priorities.owner_id and p.role = 'owner'
+    )
+  );
 
 create policy "owner manages own actions" on gps_actions for all
   to authenticated
   using (exists (select 1 from gps_priorities p where p.id = priority_id and p.owner_id = auth.uid()))
   with check (exists (select 1 from gps_priorities p where p.id = priority_id and p.owner_id = auth.uid()));
-create policy "coordinator reads all actions" on gps_actions for select
-  to authenticated using (is_coordinator());
+create policy "coordinator reads non-owner actions" on gps_actions for select
+  to authenticated using (
+    is_coordinator() and not exists (
+      select 1 from gps_priorities p
+      join profiles pr on pr.id = p.owner_id
+      where p.id = gps_actions.priority_id and pr.role = 'owner'
+    )
+  );
+
+-- ============================================================================
+-- private_todos -- owner-only, full stop. No owner_id column since there's
+-- only ever one owner; per-row ownership would be pointless here.
+-- ============================================================================
+create table if not exists private_todos (
+  id uuid primary key default gen_random_uuid(),
+  text text not null,
+  done boolean not null default false,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+alter table private_todos enable row level security;
+
+create policy "owner only" on private_todos for all
+  to authenticated using (is_owner()) with check (is_owner());
