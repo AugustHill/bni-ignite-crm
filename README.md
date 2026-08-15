@@ -91,6 +91,8 @@ database, neither touches existing data beyond tagging ownership:
   add her own contacts (assigned to herself only), and tracks who added
   each contact. Existing contacts show as "Unknown" for who added them,
   there's no way to know that retroactively.
+- `supabase/migration_007_contact_email.sql` — adds an optional email
+  address to contacts, powering the "Email" button on each one.
 
 ## How the pieces fit together
 

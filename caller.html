@@ -30,6 +30,7 @@
       <p class="subtitle" id="welcome-line">&nbsp;</p>
     </div>
     <div class="header-actions">
+      <a class="btn btn--accent btn--sm" href="https://www.bniconnectglobal.com/web/open/tokenator?concept=connect&token=lENmWAy7v2tcagdzGIVbXovW1C0YkFwk6D4cnOvLoj3zYcbbgqENq3pR7M3wiPZqgi9jnfxvyGgSLD3OqVeUXUUZB%2BJtAymKNDf76iCSfzRFYmKhoMUkExGIR%2BkX03TJ3iHikyY5hLMH6wrhptAgHaNMUAnCewdiPWzpFaofPI4%3D" target="_blank" rel="noopener noreferrer">Add Visitor</a>
       <a class="btn btn--outline btn--sm" href="gps-plan.html">Your GPS Plan</a>
       <a class="btn btn--outline btn--sm" href="account.html">Account</a>
       <button class="btn btn--outline btn--sm" id="logout-btn">Log Out</button>
@@ -62,6 +63,10 @@
       <div class="form-group">
         <label for="ac-phone">Phone</label>
         <input type="tel" id="ac-phone" required placeholder="e.g. 727-555-0100">
+      </div>
+      <div class="form-group">
+        <label for="ac-email">Email (optional)</label>
+        <input type="email" id="ac-email" placeholder="e.g. owner@business.com">
       </div>
       <div class="form-group">
         <label for="ac-industry">Industry</label>
@@ -214,6 +219,7 @@
           <div class="contact-badges">
             <span class="badge badge--${c.lead_temperature}">${c.lead_temperature === 'warm' ? 'Warm' : 'Cold'}</span>
             <span class="badge badge--stage-${c.stage}">${STAGE_LABELS[c.stage] || c.stage}</span>
+            ${c.email ? `<a class="btn btn--outline btn--sm" href="mailto:${c.email}">Email</a>` : ''}
             <button type="button" class="btn btn--accent btn--sm log-toggle">Log a call</button>
           </div>
         </div>
@@ -346,6 +352,7 @@
       business_name: document.getElementById('ac-business').value.trim(),
       contact_name: document.getElementById('ac-contact-name').value.trim() || null,
       phone: document.getElementById('ac-phone').value.trim(),
+      email: document.getElementById('ac-email').value.trim() || null,
       industry: document.getElementById('ac-industry').value.trim() || null,
       lead_temperature: document.getElementById('ac-temperature').value,
       assigned_to: profile.id,

@@ -69,6 +69,7 @@ create table if not exists contacts (
   business_name text not null,
   contact_name text,
   phone text not null,
+  email text,
   industry text,
   lead_temperature text not null default 'cold' check (lead_temperature in ('warm', 'cold')),
   notes text,

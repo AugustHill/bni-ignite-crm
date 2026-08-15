@@ -81,6 +81,10 @@
           <input type="tel" id="c-phone" required placeholder="e.g. 727-555-0100">
         </div>
         <div class="form-group">
+          <label for="c-email">Email (optional)</label>
+          <input type="email" id="c-email" placeholder="e.g. owner@business.com">
+        </div>
+        <div class="form-group">
           <label for="c-industry">Industry</label>
           <input type="text" id="c-industry" placeholder="e.g. Roofing">
         </div>
@@ -108,7 +112,7 @@
       <details class="bulk-add">
         <summary>Bulk add multiple contacts at once</summary>
         <div style="margin-top:12px;">
-          <p class="hint">One contact per line: Business Name, Contact Name, Phone, Industry. Contact Name and Industry can be left blank (still put the commas in), e.g.<br><code>Sunshine Roofing, Pat Reyes, 727-555-0110, Roofing</code></p>
+          <p class="hint">One contact per line: Business Name, Contact Name, Phone, Industry, Email. Contact Name, Industry, and Email can be left blank (still put the commas in), e.g.<br><code>Sunshine Roofing, Pat Reyes, 727-555-0110, Roofing, pat@sunshineroofing.com</code></p>
           <div class="form-group">
             <textarea id="bulk-text" rows="6" placeholder="Business Name, Contact Name, Phone, Industry"></textarea>
           </div>
@@ -120,7 +124,7 @@
           <p class="error-msg" id="bulk-add-error"></p>
           <p class="success-msg" id="bulk-add-success"></p>
 
-          <p class="hint" style="margin-top:20px; padding-top:16px; border-top:1px dashed var(--color-border);">Or upload a CSV file with the same columns in order (Business Name, Contact Name, Phone, Industry). A header row is fine, it's detected and skipped automatically.</p>
+          <p class="hint" style="margin-top:20px; padding-top:16px; border-top:1px dashed var(--color-border);">Or upload a CSV file with the same columns in order (Business Name, Contact Name, Phone, Industry, Email). A header row is fine, it's detected and skipped automatically.</p>
           <div class="form-group">
             <input type="file" id="csv-file" accept=".csv,text/csv">
           </div>
@@ -132,10 +136,14 @@
 
     <div class="card">
       <h2>All Contacts</h2>
+      <div style="margin-bottom:12px;">
+        <button type="button" class="btn btn--danger btn--sm" id="delete-selected-btn" disabled>Delete Selected</button>
+        <span class="hint" id="selected-count"></span>
+      </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Business</th><th>Phone</th><th>Industry</th><th>Type</th><th>Stage</th><th>Assigned</th><th></th></tr></thead>
-          <tbody id="contacts-tbody"><tr><td colspan="7" class="empty-state">Loading…</td></tr></tbody>
+          <thead><tr><th><input type="checkbox" id="select-all-contacts"></th><th>Business</th><th>Phone</th><th>Industry</th><th>Type</th><th>Stage</th><th>Assigned</th><th></th></tr></thead>
+          <tbody id="contacts-tbody"><tr><td colspan="8" class="empty-state">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -298,11 +306,11 @@
     const tbody = document.getElementById('contacts-tbody');
     const { data, error } = await client.from('contacts').select('*, creator:profiles!created_by(full_name)').order('created_at', { ascending: false });
     if (error) {
-      tbody.innerHTML = `<tr><td colspan="7" class="empty-state">Couldn't load contacts: ${error.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Couldn't load contacts: ${error.message}</td></tr>`;
       return;
     }
     if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No contacts yet. Add one above.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No contacts yet. Add one above.</td></tr>';
       return;
     }
 
@@ -311,6 +319,7 @@
 
     tbody.innerHTML = data.map((c) => `
       <tr data-row="${c.id}">
+        <td><input type="checkbox" class="contact-select" data-id="${c.id}"></td>
         <td>${c.business_name}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}</td>
         <td><a href="tel:${c.phone}">${c.phone}</a></td>
         <td>${c.industry || ''}</td>
@@ -324,12 +333,14 @@
         <td><select class="assign-select" data-id="${c.id}">${callerOpts(c.assigned_to)}</select></td>
         <td style="white-space:nowrap;">
           <button type="button" class="btn btn--outline btn--sm view-toggle" data-id="${c.id}">View</button>
+          ${c.email ? `<a class="btn btn--outline btn--sm" href="mailto:${c.email}">Email</a>` : ''}
           <button type="button" class="btn btn--danger btn--sm delete-contact" data-id="${c.id}" data-name="${c.business_name}">Delete</button>
         </td>
       </tr>
       <tr class="detail-row" data-detail="${c.id}" style="display:none;">
-        <td colspan="7">
+        <td colspan="8">
           <p class="hint" style="margin-top:0;">Added by ${c.creator ? c.creator.full_name : 'Unknown'} on ${new Date(c.created_at).toLocaleString()}</p>
+          ${c.email ? `<p class="hint">Email: <a href="mailto:${c.email}">${c.email}</a></p>` : ''}
           ${c.notes ? `<p class="hint"><strong>Notes:</strong> ${c.notes}</p>` : ''}
           <div class="call-history" data-history="${c.id}"><p class="hint">Loading call history…</p></div>
         </td>
@@ -389,7 +400,34 @@
         loadDashboard();
       });
     });
+
+    document.getElementById('select-all-contacts').checked = false;
+    updateSelectedCount();
+    tbody.querySelectorAll('.contact-select').forEach((cb) => {
+      cb.addEventListener('change', updateSelectedCount);
+    });
   }
+
+  function updateSelectedCount() {
+    const checked = document.querySelectorAll('.contact-select:checked');
+    const btn = document.getElementById('delete-selected-btn');
+    btn.disabled = checked.length === 0;
+    document.getElementById('selected-count').textContent = checked.length ? `${checked.length} selected` : '';
+  }
+
+  document.getElementById('select-all-contacts').addEventListener('change', (e) => {
+    document.querySelectorAll('.contact-select').forEach((cb) => { cb.checked = e.target.checked; });
+    updateSelectedCount();
+  });
+
+  document.getElementById('delete-selected-btn').addEventListener('click', async () => {
+    const ids = [...document.querySelectorAll('.contact-select:checked')].map((cb) => cb.dataset.id);
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} contact(s)? This also removes every call logged against them. This can't be undone.`)) return;
+    await client.from('contacts').delete().in('id', ids);
+    loadContacts();
+    loadDashboard();
+  });
 
   document.getElementById('add-contact-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -402,6 +440,7 @@
       business_name: document.getElementById('c-business').value.trim(),
       contact_name: document.getElementById('c-contact-name').value.trim() || null,
       phone: document.getElementById('c-phone').value.trim(),
+      email: document.getElementById('c-email').value.trim() || null,
       industry: document.getElementById('c-industry').value.trim() || null,
       lead_temperature: document.getElementById('c-temperature').value,
       notes: document.getElementById('c-notes').value.trim() || null,
@@ -430,6 +469,7 @@
         contact_name: parts[1] || null,
         phone: parts[2] || '',
         industry: parts[3] || null,
+        email: parts[4] || null,
         assigned_to: assigned,
       };
     }).filter((r) => r.business_name && r.phone);
@@ -506,6 +546,7 @@
         contact_name: cells[1] || null,
         phone: cells[2] || '',
         industry: cells[3] || null,
+        email: cells[4] || null,
         assigned_to: assigned,
       };
     }).filter((r) => r.business_name && r.phone);
