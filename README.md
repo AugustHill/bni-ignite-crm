@@ -82,6 +82,9 @@ database, neither touches existing data beyond tagging ownership:
   `owner` role tier and promotes your account to it by email, and adds the
   private to-do list. Skip this one if you haven't hit "owner" anywhere
   yet (older setups than 2026-08-14).
+- `supabase/migration_004_todo_category_priority.sql` — adds category and
+  priority to the private to-do list. Backfills any tasks you'd already
+  added to Personal / Medium, nothing to lose.
 
 ## How the pieces fit together
 

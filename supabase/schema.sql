@@ -271,6 +271,9 @@ create policy "coordinator reads non-owner actions" on gps_actions for select
 create table if not exists private_todos (
   id uuid primary key default gen_random_uuid(),
   text text not null,
+  category text not null default 'Personal'
+    check (category in ('BNI', 'Power Plates', 'Personal', 'Real Estate', 'Coaching Task')),
+  priority text not null default 'medium' check (priority in ('high', 'medium', 'low')),
   done boolean not null default false,
   sort_order int not null default 0,
   created_at timestamptz not null default now()

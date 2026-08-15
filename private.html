@@ -7,13 +7,33 @@
 <title>Private | BNI Ignite Growth CRM</title>
 <link rel="stylesheet" href="css/style.css">
 <style>
-  .todo-add-form { display: flex; gap: 10px; margin-bottom: 16px; }
-  .todo-add-form input { flex: 1; }
+  :root {
+    --priority-high: #1B6B4A; --priority-high-bg: #e5f3ec;
+    --priority-medium: #8a6d00; --priority-medium-bg: #fdf3d6;
+    --priority-low: #B3261E; --priority-low-bg: #fbeae9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --priority-high: #5fc796; --priority-high-bg: #1e3b2c;
+      --priority-medium: #f0d766; --priority-medium-bg: #4a3e10;
+      --priority-low: #e5766b; --priority-low-bg: #3a2321;
+    }
+  }
+  .todo-add-form .form-group { margin-bottom: 10px; }
+  .todo-add-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .todo-add-row .form-group { flex: 1; min-width: 140px; margin-bottom: 0; }
   .todo-list { list-style: none; margin: 0; padding: 0; }
-  .todo-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--color-border); gap: 12px; }
+  .todo-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 10px 12px 14px; border-bottom: 1px solid var(--color-border); border-left: 4px solid transparent; gap: 12px; }
   .todo-item:last-child { border-bottom: none; }
-  .todo-item label { display: flex; align-items: center; gap: 12px; font-size: 0.92rem; cursor: pointer; flex: 1; }
-  .todo-item.is-done span { text-decoration: line-through; color: var(--color-text-muted); }
+  .todo-item[data-priority="high"] { border-left-color: var(--priority-high); }
+  .todo-item[data-priority="medium"] { border-left-color: var(--priority-medium); }
+  .todo-item[data-priority="low"] { border-left-color: var(--priority-low); }
+  .todo-item label { display: flex; align-items: center; gap: 10px; font-size: 0.92rem; cursor: pointer; flex: 1; flex-wrap: wrap; }
+  .todo-item.is-done .todo-text { text-decoration: line-through; color: var(--color-text-muted); }
+  .priority-badge { display: inline-block; font-size: 0.68rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .priority-badge--high { background: var(--priority-high-bg); color: var(--priority-high); }
+  .priority-badge--medium { background: var(--priority-medium-bg); color: var(--priority-medium); }
+  .priority-badge--low { background: var(--priority-low-bg); color: var(--priority-low); }
   .todo-delete { color: var(--color-text-muted); font-size: 1.3rem; line-height: 1; padding: 4px 8px; flex-shrink: 0; }
   .todo-delete:hover { color: var(--color-danger); }
 </style>
@@ -35,8 +55,30 @@
   <div class="card">
     <h2>To-Do</h2>
     <form id="todo-add-form" class="todo-add-form">
-      <input type="text" id="todo-input" placeholder="Add a task…" required>
-      <button type="submit" class="btn btn--accent">Add</button>
+      <div class="form-group">
+        <input type="text" id="todo-input" placeholder="Add a task…" required>
+      </div>
+      <div class="todo-add-row">
+        <div class="form-group">
+          <label for="todo-category">Category</label>
+          <select id="todo-category">
+            <option value="BNI">BNI</option>
+            <option value="Power Plates">Power Plates</option>
+            <option value="Personal" selected>Personal</option>
+            <option value="Real Estate">Real Estate</option>
+            <option value="Coaching Task">Coaching Task</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="todo-priority">Priority</label>
+          <select id="todo-priority">
+            <option value="high">High</option>
+            <option value="medium" selected>Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn--accent">Add</button>
+      </div>
     </form>
     <ul id="todos-list" class="todo-list"></ul>
   </div>
@@ -67,10 +109,12 @@
     }
 
     todosList.innerHTML = data.map((t) => `
-      <li class="todo-item ${t.done ? 'is-done' : ''}">
+      <li class="todo-item ${t.done ? 'is-done' : ''}" data-priority="${t.priority}">
         <label>
           <input type="checkbox" class="todo-check" data-id="${t.id}" ${t.done ? 'checked' : ''}>
-          <span>${t.text}</span>
+          <span class="todo-text">${t.text}</span>
+          <span class="badge">${t.category}</span>
+          <span class="priority-badge priority-badge--${t.priority}">${t.priority}</span>
         </label>
         <button type="button" class="todo-delete" data-id="${t.id}" aria-label="Delete task">&times;</button>
       </li>
@@ -95,7 +139,9 @@
     const input = document.getElementById('todo-input');
     const text = input.value.trim();
     if (!text) return;
-    await client.from('private_todos').insert({ text });
+    const category = document.getElementById('todo-category').value;
+    const priority = document.getElementById('todo-priority').value;
+    await client.from('private_todos').insert({ text, category, priority });
     input.value = '';
     loadTodos();
   });
