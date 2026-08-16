@@ -93,6 +93,9 @@ database, neither touches existing data beyond tagging ownership:
   there's no way to know that retroactively.
 - `supabase/migration_007_contact_email.sql` — adds an optional email
   address to contacts, powering the "Email" button on each one.
+- `supabase/migration_008_private_gps_plans.sql` — lets the owner create
+  more than one GPS plan in the Private section (separate from, and
+  doesn't touch, the one everyone gets from their role).
 
 ## How the pieces fit together
 
@@ -114,8 +117,13 @@ database, neither touches existing data beyond tagging ownership:
   spot). The owner sees an extra **Private** button in the header that no
   one else gets.
 - **`private.html`** — owner-only (enforced by RLS, not just a hidden
-  button): a to-do list, plus a link to the owner's own GPS plan. Room to
-  add more here later.
+  button): a to-do list, a link to the owner's own role-based GPS plan,
+  and a list of additional private GPS plans (create/delete here, each
+  opens in `private-gps-plan.html?plan=<id>`).
+- **`private-gps-plan.html`** — one additional private GPS plan's full
+  1-3-5 editor (title, goal, 3 priorities × 5 strategies). Separate
+  tables from the role-based GPS system, owner can have any number of
+  these.
 - **`gps-plan.html`** — everyone's own 1-3-5: the goal at the top, then
   three priorities each broken into five strategies, fill in and check off
   as you go. Each person gets their own automatically the first time they

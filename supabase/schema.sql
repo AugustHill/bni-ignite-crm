@@ -291,3 +291,47 @@ alter table private_todos enable row level security;
 
 create policy "owner only" on private_todos for all
   to authenticated using (is_owner()) with check (is_owner());
+
+-- ============================================================================
+-- private_gps_plans / private_gps_priorities / private_gps_actions --
+-- additional, owner-only GPS plans beyond the one role-based plan every
+-- person gets from gps_goal above. Unlike gps_goal, title-driven and not
+-- tied to owner_id as a 1-per-person key, since the owner can have any
+-- number of these.
+-- ============================================================================
+create table if not exists private_gps_plans (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  goal_text text,
+  starting_number int,
+  target_number int,
+  target_date date,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists private_gps_priorities (
+  id uuid primary key default gen_random_uuid(),
+  plan_id uuid not null references private_gps_plans(id) on delete cascade,
+  title text not null default '',
+  sort_order int not null
+);
+
+create table if not exists private_gps_actions (
+  id uuid primary key default gen_random_uuid(),
+  priority_id uuid not null references private_gps_priorities(id) on delete cascade,
+  text text not null default '',
+  done boolean not null default false,
+  sort_order int not null
+);
+
+alter table private_gps_plans enable row level security;
+alter table private_gps_priorities enable row level security;
+alter table private_gps_actions enable row level security;
+
+create policy "owner only" on private_gps_plans for all
+  to authenticated using (is_owner()) with check (is_owner());
+create policy "owner only" on private_gps_priorities for all
+  to authenticated using (is_owner()) with check (is_owner());
+create policy "owner only" on private_gps_actions for all
+  to authenticated using (is_owner()) with check (is_owner());

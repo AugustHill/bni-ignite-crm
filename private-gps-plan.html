@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Private GPS Plan | BNI Ignite Growth CRM</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .priority-title-input { font-family: var(--font-heading); font-size: 1.15rem; font-weight: 700; border: 1px solid transparent; background: transparent; padding: 4px 6px; border-radius: 6px; width: 100%; margin-bottom: 14px; }
+  .priority-title-input:hover, .priority-title-input:focus { border-color: var(--color-border); background: var(--color-bg); }
+  .priority-num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--color-primary); color: #fff; font-size: 0.75rem; font-weight: 700; margin-right: 8px; flex-shrink: 0; }
+  .goal-edit-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; margin-top: 14px; }
+  @media (max-width: 700px) { .goal-edit-grid { grid-template-columns: 1fr; } }
+  #plan-title-input { font-family: var(--font-heading); font-size: 1.7rem; font-weight: 700; border: 1px solid transparent; background: transparent; padding: 2px 4px; border-radius: 6px; width: 100%; }
+  #plan-title-input:hover, #plan-title-input:focus { border-color: var(--color-border); background: var(--color-bg); }
+</style>
+</head>
+<body>
+
+<div class="wrap wrap--narrow">
+  <div class="presence-bar" id="presence-bar"></div>
+  <div class="page-header">
+    <div style="flex:1;">
+      <p class="eyebrow">BNI Ignite · Private · GPS Plan</p>
+      <input type="text" id="plan-title-input" placeholder="Plan title">
+    </div>
+    <div class="header-actions">
+      <a class="btn btn--outline btn--sm" href="private.html">Back to Private</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>1. Goal</h2>
+    <div id="goal-view"><p class="empty-state">Loading…</p></div>
+    <details style="margin-top:14px;">
+      <summary style="cursor:pointer; font-size:0.85rem; font-weight:700; color: var(--color-primary);">Edit goal</summary>
+      <form id="goal-form" class="goal-edit-grid">
+        <div class="form-group" style="grid-column: 1 / -1;">
+          <label for="g-text">Goal (optional)</label>
+          <input type="text" id="g-text">
+        </div>
+        <div class="form-group">
+          <label for="g-start">Starting Number (optional)</label>
+          <input type="number" id="g-start">
+        </div>
+        <div class="form-group">
+          <label for="g-target">Target Number (optional)</label>
+          <input type="number" id="g-target">
+        </div>
+        <div class="form-group">
+          <label for="g-date">Target Date (optional)</label>
+          <input type="date" id="g-date">
+        </div>
+        <div style="grid-column: 1 / -1;">
+          <button type="submit" class="btn btn--primary btn--sm">Save Goal</button>
+          <p class="error-msg" id="goal-error"></p>
+        </div>
+      </form>
+    </details>
+  </div>
+
+  <div id="priorities-container"><p class="empty-state">Loading priorities…</p></div>
+</div>
+
+<script src="js/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/session.js"></script>
+<script>
+  let client, profile, planId;
+
+  function renderGoal(goal) {
+    const parts = [];
+    if (goal.starting_number != null && goal.target_number != null) parts.push(`${goal.starting_number} → ${goal.target_number}`);
+    if (goal.target_date) parts.push(`by ${new Date(goal.target_date + 'T00:00:00').toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`);
+    document.getElementById('goal-view').innerHTML = `
+      <p style="font-size:1.05rem; margin:0 0 4px;">${goal.goal_text || 'No goal text yet.'}</p>
+      ${parts.length ? `<p class="hint">${parts.join(' ')}</p>` : ''}
+    `;
+    document.getElementById('g-text').value = goal.goal_text || '';
+    document.getElementById('g-start').value = goal.starting_number ?? '';
+    document.getElementById('g-target').value = goal.target_number ?? '';
+    document.getElementById('g-date').value = goal.target_date || '';
+  }
+
+  async function loadGoal() {
+    const { data, error } = await client.from('private_gps_plans').select('*').eq('id', planId).maybeSingle();
+    if (error || !data) {
+      document.getElementById('goal-view').innerHTML = '<p class="empty-state">Couldn\'t load this plan.</p>';
+      return;
+    }
+    document.getElementById('plan-title-input').value = data.title;
+    renderGoal(data);
+  }
+
+  document.getElementById('plan-title-input').addEventListener('blur', async (e) => {
+    const title = e.target.value.trim();
+    if (!title) return;
+    await client.from('private_gps_plans').update({ title }).eq('id', planId);
+  });
+
+  document.getElementById('goal-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('goal-error');
+    errEl.textContent = '';
+    const payload = {
+      goal_text: document.getElementById('g-text').value.trim() || null,
+      starting_number: document.getElementById('g-start').value === '' ? null : parseInt(document.getElementById('g-start').value, 10),
+      target_number: document.getElementById('g-target').value === '' ? null : parseInt(document.getElementById('g-target').value, 10),
+      target_date: document.getElementById('g-date').value || null,
+    };
+    const { error } = await client.from('private_gps_plans').update(payload).eq('id', planId);
+    if (error) { errEl.textContent = error.message; return; }
+    renderGoal(payload);
+  });
+
+  async function loadPriorities() {
+    const container = document.getElementById('priorities-container');
+    const [{ data: priorities, error: pErr }, { data: actions, error: aErr }] = await Promise.all([
+      client.from('private_gps_priorities').select('*').eq('plan_id', planId).order('sort_order'),
+      client.from('private_gps_actions').select('*, private_gps_priorities!inner(plan_id)').eq('private_gps_priorities.plan_id', planId).order('sort_order'),
+    ]);
+
+    if (pErr || !priorities) {
+      container.innerHTML = `<p class="empty-state">Couldn't load priorities: ${pErr ? pErr.message : ''}</p>`;
+      return;
+    }
+    if (!priorities.length) {
+      container.innerHTML = '<p class="empty-state">Nothing here yet.</p>';
+      return;
+    }
+
+    const actionsByPriority = {};
+    (actions || []).forEach((a) => {
+      (actionsByPriority[a.priority_id] = actionsByPriority[a.priority_id] || []).push(a);
+    });
+
+    container.innerHTML = priorities.map((p, idx) => `
+      <div class="card" data-priority="${p.id}">
+        <h2>2. Priority ${idx + 1}</h2>
+        <input type="text" class="priority-title-input" data-id="${p.id}" value="${p.title}">
+        <p class="hint" style="margin-top:-8px; margin-bottom:14px;">3. Five action strategies for this priority</p>
+        <ul class="checklist">
+          ${(actionsByPriority[p.id] || []).map((a, i) => `
+            <li>
+              <span class="priority-num">${i + 1}</span>
+              <input type="checkbox" class="action-done" data-id="${a.id}" ${a.done ? 'checked' : ''}>
+              <input type="text" class="action-text" data-id="${a.id}" value="${a.text || ''}" placeholder="Strategy ${i + 1}…">
+            </li>
+          `).join('')}
+        </ul>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.action-done').forEach((cb) => {
+      if (cb.checked) cb.closest('li').querySelector('.action-text').style.textDecoration = 'line-through';
+    });
+
+    container.querySelectorAll('.priority-title-input').forEach((input) => {
+      input.addEventListener('blur', async () => {
+        await client.from('private_gps_priorities').update({ title: input.value.trim() }).eq('id', input.dataset.id);
+      });
+    });
+    container.querySelectorAll('.action-text').forEach((input) => {
+      input.addEventListener('blur', async () => {
+        await client.from('private_gps_actions').update({ text: input.value.trim() }).eq('id', input.dataset.id);
+      });
+    });
+    container.querySelectorAll('.action-done').forEach((cb) => {
+      cb.addEventListener('change', async () => {
+        await client.from('private_gps_actions').update({ done: cb.checked }).eq('id', cb.dataset.id);
+        cb.closest('li').querySelector('.action-text').style.textDecoration = cb.checked ? 'line-through' : 'none';
+      });
+    });
+  }
+
+  (async () => {
+    try {
+      const result = await requireRole('owner');
+      client = result.client;
+      profile = result.profile;
+      initPresence(client, profile);
+
+      const params = new URLSearchParams(window.location.search);
+      planId = params.get('plan');
+      if (!planId) {
+        document.getElementById('goal-view').innerHTML = '<p class="empty-state">No plan specified.</p>';
+        return;
+      }
+
+      loadGoal();
+      loadPriorities();
+    } catch (err) {
+      console.error(err.message);
+    }
+  })();
+</script>
+</body>
+</html>
