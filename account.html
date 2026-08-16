@@ -23,7 +23,7 @@
   </div>
 
   <div class="card">
-    <h2>Change Password</h2>
+    <h2 id="password-card-heading">Change Password</h2>
     <form id="password-form">
       <div class="form-group">
         <label for="new-password">New Password</label>
@@ -46,6 +46,20 @@
 <script src="js/session.js"></script>
 <script>
   let client, profile;
+
+  // Fires when this page was reached via a "reset your password" email
+  // link rather than a normal login -- Supabase establishes a temporary
+  // session straight from the link, requireSession() below will succeed
+  // even though the person never actually logged in normally, this just
+  // makes that state clearer than silently showing the regular page.
+  if (typeof supabaseClient !== 'undefined' && supabaseClient) {
+    supabaseClient.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        document.getElementById('welcome-line').textContent = 'Set a new password to finish recovering your account.';
+        document.getElementById('password-card-heading').textContent = 'Set New Password';
+      }
+    });
+  }
 
   document.getElementById('password-form').addEventListener('submit', async (e) => {
     e.preventDefault();

@@ -137,6 +137,7 @@
     <div class="card">
       <h2>All Contacts</h2>
       <div style="margin-bottom:12px;">
+        <button type="button" class="btn btn--outline btn--sm" id="export-csv-btn">Export CSV</button>
         <button type="button" class="btn btn--danger btn--sm" id="delete-selected-btn" disabled>Delete Selected</button>
         <span class="hint" id="selected-count"></span>
       </div>
@@ -231,7 +232,7 @@
     callback_requested: 'Asked for a callback',
   };
 
-  let client, profile, callers = [];
+  let client, profile, callers = [], currentContacts = [];
 
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -304,11 +305,12 @@
   // ---------- Contacts ----------
   async function loadContacts() {
     const tbody = document.getElementById('contacts-tbody');
-    const { data, error } = await client.from('contacts').select('*, creator:profiles!created_by(full_name)').order('created_at', { ascending: false });
+    const { data, error } = await client.from('contacts').select('*, creator:profiles!created_by(full_name), assignee:profiles!assigned_to(full_name)').order('created_at', { ascending: false });
     if (error) {
       tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Couldn't load contacts: ${error.message}</td></tr>`;
       return;
     }
+    currentContacts = data;
     if (!data.length) {
       tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No contacts yet. Add one above.</td></tr>';
       return;
@@ -420,10 +422,44 @@
     updateSelectedCount();
   });
 
+  function toCsvValue(val) {
+    if (val === null || val === undefined) return '';
+    const str = String(val);
+    return /[",\n]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
+  }
+
+  document.getElementById('export-csv-btn').addEventListener('click', () => {
+    if (!currentContacts.length) { alert('No contacts to export yet.'); return; }
+
+    const headers = ['Business Name', 'Contact Name', 'Phone', 'Email', 'Industry', 'Lead Type', 'Stage', 'DNC', 'Assigned To', 'Added By', 'Added On', 'Notes'];
+    const rows = currentContacts.map((c) => [
+      c.business_name, c.contact_name, c.phone, c.email, c.industry,
+      c.lead_temperature, c.stage, c.dnc ? 'Yes' : 'No',
+      c.assignee ? c.assignee.full_name : '', c.creator ? c.creator.full_name : '',
+      new Date(c.created_at).toLocaleString(), c.notes,
+    ]);
+    const csv = [headers, ...rows].map((row) => row.map(toCsvValue).join(',')).join('\r\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bni-ignite-contacts-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
   document.getElementById('delete-selected-btn').addEventListener('click', async () => {
     const ids = [...document.querySelectorAll('.contact-select:checked')].map((cb) => cb.dataset.id);
     if (!ids.length) return;
-    if (!confirm(`Delete ${ids.length} contact(s)? This also removes every call logged against them. This can't be undone.`)) return;
+    // A plain confirm() is too easy to click through on reflex, especially
+    // right after "select all" -- typing the exact count both raises the
+    // friction and forces a moment of "wait, that many?" if the selection
+    // was bigger than intended.
+    const typed = prompt(`Type ${ids.length} to confirm deleting ${ids.length} contact(s). This also removes every call logged against them. This can't be undone.`);
+    if (typed !== String(ids.length)) return;
     await client.from('contacts').delete().in('id', ids);
     loadContacts();
     loadDashboard();

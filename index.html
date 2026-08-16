@@ -25,6 +25,18 @@
     <button type="submit" class="btn btn--primary" style="width:100%;">Log In</button>
     <p class="error-msg" id="login-error"></p>
   </form>
+  <p style="text-align:center; margin-top:14px; margin-bottom:0;">
+    <a href="#" id="forgot-password-link" style="font-size:0.85rem;">Forgot your password?</a>
+  </p>
+  <div id="forgot-password-section" style="display:none; margin-top:16px; padding-top:16px; border-top:1px dashed var(--color-border);">
+    <div class="form-group">
+      <label for="reset-email">Email</label>
+      <input type="email" id="reset-email">
+    </div>
+    <button type="button" class="btn btn--outline" id="send-reset-btn" style="width:100%;">Send Reset Link</button>
+    <p class="error-msg" id="reset-error"></p>
+    <p class="success-msg" id="reset-success"></p>
+  </div>
 </div>
 
 <script src="js/supabase-config.js"></script>
@@ -53,7 +65,7 @@
       await client.auth.signOut();
       return;
     }
-    window.location.href = profile.role === 'coordinator' ? 'admin.html' : 'caller.html';
+    window.location.href = profile.role === 'caller' ? 'caller.html' : 'admin.html';
   }
 
   loginForm.addEventListener('submit', async (e) => {
@@ -71,6 +83,29 @@
       return;
     }
     goToRoleHome();
+  });
+
+  document.getElementById('forgot-password-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    const section = document.getElementById('forgot-password-section');
+    const showing = section.style.display !== 'none';
+    section.style.display = showing ? 'none' : 'block';
+    if (!showing) document.getElementById('reset-email').value = document.getElementById('login-email').value;
+  });
+
+  document.getElementById('send-reset-btn').addEventListener('click', async () => {
+    const errEl = document.getElementById('reset-error');
+    const okEl = document.getElementById('reset-success');
+    errEl.textContent = '';
+    okEl.textContent = '';
+    if (!client) { errEl.textContent = "This app isn't connected yet."; return; }
+    const email = document.getElementById('reset-email').value.trim();
+    if (!email) { errEl.textContent = 'Enter your email first.'; return; }
+    const { error } = await client.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + '/account.html',
+    });
+    if (error) { errEl.textContent = error.message; return; }
+    okEl.textContent = 'If that email has an account, a reset link is on its way. Check your inbox (and spam folder).';
   });
 
   if (client) goToRoleHome();

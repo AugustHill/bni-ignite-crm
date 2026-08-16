@@ -54,6 +54,20 @@ until then you'll see a "not connected yet" message, which is expected.
   key does **not** go in any file that gets committed — see the Netlify
   environment variables step below instead.
 
+### 1b. Password recovery setup (one-time, dashboard only, no SQL)
+
+For "Forgot your password?" on the login page to actually deliver
+someone to `account.html` instead of Supabase's default fallback page:
+
+- Supabase dashboard → Authentication → URL Configuration
+- Set **Site URL** to `https://bniignite.netlify.app`
+- Under **Redirect URLs**, add `https://bniignite.netlify.app/**`
+
+Supabase sends the actual reset email itself, no setup needed for that
+part — it'll come from a generic Supabase address rather than a
+BNI Ignite one, and may land in spam the first time, worth telling
+Lisa/Daniel that if either of them ever uses it.
+
 ### 2. Netlify (hosting)
 
 Live at **bni-ignite-crm.netlify.app**, continuous deployment from
@@ -103,7 +117,8 @@ database, neither touches existing data beyond tagging ownership:
   role in `profiles` and sends you to `caller.html` or `admin.html`
   automatically. There's still no public sign-up page — every login gets
   created deliberately, either your one bootstrap account (above) or through
-  the Team tab from here on.
+  the Team tab from here on. Has a "Forgot your password?" link (see the
+  setup step above for the one-time Supabase configuration it needs).
 - **`caller.html`** — her queue of assigned contacts, a log-a-call form
   (outcome, notes, optional follow-up date), her self-reported hours, and a
   link to her own GPS plan. Logging an outcome of "asked not to be called
