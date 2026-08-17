@@ -30,7 +30,6 @@
       <p class="subtitle" id="welcome-line">&nbsp;</p>
     </div>
     <div class="header-actions">
-      <a class="btn btn--accent btn--sm" href="https://www.bniconnectglobal.com/web/open/tokenator?concept=connect&token=lENmWAy7v2tcagdzGIVbXovW1C0YkFwk6D4cnOvLoj3zYcbbgqENq3pR7M3wiPZqgi9jnfxvyGgSLD3OqVeUXUUZB%2BJtAymKNDf76iCSfzRFYmKhoMUkExGIR%2BkX03TJ3iHikyY5hLMH6wrhptAgHaNMUAnCewdiPWzpFaofPI4%3D" target="_blank" rel="noopener noreferrer">Add Visitor</a>
       <a class="btn btn--outline btn--sm" href="gps-plan.html">Your GPS Plan</a>
       <a class="btn btn--outline btn--sm" href="account.html">Account</a>
       <button class="btn btn--outline btn--sm" id="logout-btn">Log Out</button>
@@ -40,6 +39,20 @@
   <div class="banner">
     <span>📞</span>
     <span><strong>Calling hours: 9:00 AM – 5:00 PM Eastern.</strong> Keep all calls inside that window.</span>
+  </div>
+
+  <div class="card">
+    <h2>Registering a Visitor</h2>
+    <p class="hint" style="margin-top:-6px;">Before you hang up with someone who says yes, get all of this, you'll need it on the Add Visitor form:</p>
+    <ul style="margin:0 0 14px; padding-left:20px; font-size:0.9rem; line-height:1.9;">
+      <li>First and last name</li>
+      <li>Company name</li>
+      <li>Phone number</li>
+      <li>Email address</li>
+      <li>Their category (their profession/industry, BNI only allows one per category per chapter)</li>
+      <li>Which meeting date they're coming to</li>
+    </ul>
+    <a class="btn btn--accent btn--sm" href="https://www.bniconnectglobal.com/web/open/tokenator?concept=connect&token=lENmWAy7v2tcagdzGIVbXovW1C0YkFwk6D4cnOvLoj3zYcbbgqENq3pR7M3wiPZqgi9jnfxvyGgSLD3OqVeUXUUZB%2BJtAymKNDf76iCSfzRFYmKhoMUkExGIR%2BkX03TJ3iHikyY5hLMH6wrhptAgHaNMUAnCewdiPWzpFaofPI4%3D" target="_blank" rel="noopener noreferrer">Add Visitor</a>
   </div>
 
   <div class="grid grid-4" id="stat-row">
@@ -232,6 +245,10 @@
               ${Object.entries(OUTCOME_LABELS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
             </select>
           </div>
+          <div class="banner log-visitor-reminder" style="display:none;">
+            <span>📝</span>
+            <span>Get their <strong>first/last name, company, phone, email, and category</strong> before you finish this call, then use the Add Visitor button up top.</span>
+          </div>
           <div class="form-group">
             <label>Notes</label>
             <textarea class="log-notes" placeholder="Anything worth remembering about this call"></textarea>
@@ -249,6 +266,13 @@
     queueContainer.querySelectorAll('.log-toggle').forEach((btn) => {
       btn.addEventListener('click', () => {
         btn.closest('.contact-card').querySelector('.log-form').classList.toggle('is-open');
+      });
+    });
+
+    queueContainer.querySelectorAll('.log-outcome').forEach((select) => {
+      select.addEventListener('change', (e) => {
+        const reminder = e.target.closest('form').querySelector('.log-visitor-reminder');
+        reminder.style.display = e.target.value === 'accepted_invitation' ? 'flex' : 'none';
       });
     });
 
