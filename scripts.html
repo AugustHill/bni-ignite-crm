@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Script Book | BNI Ignite Growth CRM</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .script-title-input { font-family: var(--font-heading); font-size: 1.15rem; font-weight: 700; border: 1px solid transparent; background: transparent; padding: 4px 6px; border-radius: 6px; width: 100%; margin-bottom: 10px; }
+  .script-title-input:hover, .script-title-input:focus { border-color: var(--color-border); background: var(--color-bg); }
+  .script-body-view { white-space: pre-wrap; font-size: 0.92rem; line-height: 1.7; margin: 0; }
+  .script-body-input { white-space: pre-wrap; font-size: 0.92rem; line-height: 1.7; min-height: 220px; font-family: inherit; }
+  .script-card-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="presence-bar" id="presence-bar"></div>
+  <div class="page-header">
+    <div>
+      <p class="eyebrow">BNI Ignite</p>
+      <h1>Script Book</h1>
+      <p class="subtitle">Frameworks, not scripts to read word for word. Adjust the tone, keep the structure.</p>
+    </div>
+    <div class="header-actions">
+      <a class="btn btn--outline btn--sm" id="back-link" href="admin.html">Back</a>
+    </div>
+  </div>
+
+  <div class="card" id="add-script-card" style="display:none;">
+    <h2>Add a Script</h2>
+    <form id="add-script-form">
+      <div class="form-group">
+        <label for="new-script-title">Title</label>
+        <input type="text" id="new-script-title" required placeholder="e.g. Follow-Up After a Visitor Day">
+      </div>
+      <div class="form-group">
+        <label for="new-script-body">Script</label>
+        <textarea id="new-script-body" class="script-body-input" required></textarea>
+      </div>
+      <button type="submit" class="btn btn--primary">Add Script</button>
+      <p class="error-msg" id="add-script-error"></p>
+    </form>
+  </div>
+
+  <div id="scripts-container"><p class="empty-state">Loading…</p></div>
+</div>
+
+<script src="js/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/session.js"></script>
+<script>
+  let client, profile, canEdit;
+  const container = document.getElementById('scripts-container');
+
+  function escapeHtml(str) {
+    return String(str || '').replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  async function loadScripts() {
+    const { data, error } = await client.from('call_scripts').select('*').order('sort_order').order('created_at');
+    if (error) {
+      container.innerHTML = `<p class="empty-state">Couldn't load scripts: ${error.message}</p>`;
+      return;
+    }
+    if (!data.length) {
+      container.innerHTML = '<p class="empty-state">No scripts yet.</p>';
+      return;
+    }
+
+    container.innerHTML = data.map((s) => `
+      <div class="card" data-id="${s.id}">
+        ${canEdit
+          ? `<input type="text" class="script-title-input" data-id="${s.id}" value="${escapeHtml(s.title)}">`
+          : `<h2>${escapeHtml(s.title)}</h2>`}
+        ${canEdit
+          ? `<textarea class="script-body-input" data-id="${s.id}">${escapeHtml(s.body)}</textarea>`
+          : `<p class="script-body-view">${escapeHtml(s.body)}</p>`}
+        ${canEdit ? `<div class="script-card-actions"><button type="button" class="btn btn--danger btn--sm delete-script" data-id="${s.id}" data-title="${escapeHtml(s.title)}">Delete</button></div>` : ''}
+      </div>
+    `).join('');
+
+    if (!canEdit) return;
+
+    container.querySelectorAll('.script-title-input').forEach((input) => {
+      input.addEventListener('blur', async () => {
+        await client.from('call_scripts').update({ title: input.value.trim(), updated_at: new Date().toISOString() }).eq('id', input.dataset.id);
+      });
+    });
+    container.querySelectorAll('.script-body-input[data-id]').forEach((textarea) => {
+      textarea.addEventListener('blur', async () => {
+        await client.from('call_scripts').update({ body: textarea.value, updated_at: new Date().toISOString() }).eq('id', textarea.dataset.id);
+      });
+    });
+    container.querySelectorAll('.delete-script').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`Delete "${btn.dataset.title}"? This can't be undone.`)) return;
+        await client.from('call_scripts').delete().eq('id', btn.dataset.id);
+        loadScripts();
+      });
+    });
+  }
+
+  document.getElementById('add-script-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('add-script-error');
+    errEl.textContent = '';
+    const title = document.getElementById('new-script-title').value.trim();
+    const body = document.getElementById('new-script-body').value.trim();
+    if (!title || !body) return;
+
+    const { error } = await client.from('call_scripts').insert({ title, body });
+    if (error) { errEl.textContent = error.message; return; }
+    document.getElementById('add-script-form').reset();
+    loadScripts();
+  });
+
+  (async () => {
+    try {
+      const result = await requireSession();
+      client = result.client;
+      profile = result.profile;
+      canEdit = profile.role === 'coordinator' || profile.role === 'owner';
+      initPresence(client, profile);
+      document.getElementById('back-link').href = profile.role === 'caller' ? 'caller.html' : 'admin.html';
+      if (canEdit) document.getElementById('add-script-card').style.display = 'block';
+      loadScripts();
+    } catch (err) {
+      console.error(err.message);
+    }
+  })();
+</script>
+</body>
+</html>

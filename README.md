@@ -110,6 +110,9 @@ database, neither touches existing data beyond tagging ownership:
 - `supabase/migration_008_private_gps_plans.sql` — lets the owner create
   more than one GPS plan in the Private section (separate from, and
   doesn't touch, the one everyone gets from their role).
+- `supabase/migration_009_call_scripts.sql` — adds the Script Book and
+  seeds it with the three GRIP-method scripts (Cold Call, Warm Call,
+  Voicemail). Everyone can read; only an administrator can edit.
 
 ## How the pieces fit together
 
@@ -139,6 +142,9 @@ database, neither touches existing data beyond tagging ownership:
   1-3-5 editor (title, goal, 3 priorities × 5 strategies). Separate
   tables from the role-based GPS system, owner can have any number of
   these.
+- **`scripts.html`** — the Script Book. Everyone can read it (linked from
+  both `admin.html` and `caller.html`); only an administrator sees the
+  edit fields and the Add a Script form.
 - **`gps-plan.html`** — everyone's own 1-3-5: the goal at the top, then
   three priorities each broken into five strategies, fill in and check off
   as you go. Each person gets their own automatically the first time they

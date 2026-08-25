@@ -208,6 +208,31 @@ create policy "caller manages her own hours"
   with check (caller_id = auth.uid());
 
 -- ============================================================================
+-- call_scripts: the Script Book. Everyone with a login can read; only an
+-- administrator (coordinator or owner) adds/edits/deletes.
+-- ============================================================================
+create table if not exists call_scripts (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  body text not null,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table call_scripts enable row level security;
+
+create policy "everyone reads scripts"
+  on call_scripts for select
+  to authenticated using (true);
+
+create policy "coordinator manages scripts"
+  on call_scripts for all
+  to authenticated
+  using (is_coordinator())
+  with check (is_coordinator());
+
+-- ============================================================================
 -- GPS (Goals, Priorities, Strategies) plans -- everyone's own 1-3-5, owned
 -- per-person (owner_id). The app auto-creates a blank goal + 3 priorities +
 -- 5 action slots each the first time a person opens gps-plan.html, so there's
