@@ -113,9 +113,9 @@
       <details class="bulk-add">
         <summary>Bulk add multiple contacts at once</summary>
         <div style="margin-top:12px;">
-          <p class="hint">One contact per line: Business Name, Contact Name, Phone, Industry, Email. Contact Name, Industry, and Email can be left blank (still put the commas in), e.g.<br><code>Sunshine Roofing, Pat Reyes, 727-555-0110, Roofing, pat@sunshineroofing.com</code></p>
+          <p class="hint">Start with a header row naming your columns, in any order: <code>Business Name, First Name, Last Name, Phone, Industry, Email</code> (a single <code>Contact Name</code> column works too instead of First/Last). Everything but Business Name and Phone can be left blank. No header row falls back to the fixed order Business Name, Contact Name, Phone, Industry, Email.</p>
           <div class="form-group">
-            <textarea id="bulk-text" rows="6" placeholder="Business Name, Contact Name, Phone, Industry"></textarea>
+            <textarea id="bulk-text" rows="6" placeholder="Business Name, First Name, Last Name, Phone, Industry, Email"></textarea>
           </div>
           <div class="form-group">
             <label for="bulk-assigned">Assign all to</label>
@@ -125,7 +125,7 @@
           <p class="error-msg" id="bulk-add-error"></p>
           <p class="success-msg" id="bulk-add-success"></p>
 
-          <p class="hint" style="margin-top:20px; padding-top:16px; border-top:1px dashed var(--color-border);">Or upload a CSV file with the same columns in order (Business Name, Contact Name, Phone, Industry, Email). A header row is fine, it's detected and skipped automatically.</p>
+          <p class="hint" style="margin-top:20px; padding-top:16px; border-top:1px dashed var(--color-border);">Or upload a CSV file. Same header rules as above, a header row naming your columns (First/Last Name or Contact Name, any order) is matched by name, not position, so it won't matter if your export's column order doesn't match what's shown here. <a href="#" id="download-template-link">Download a template</a>.</p>
           <div class="form-group">
             <input type="file" id="csv-file" accept=".csv,text/csv">
           </div>
@@ -488,6 +488,68 @@
     loadContacts();
   });
 
+  // Column-name aliases so bulk paste/CSV work whether the source uses a
+  // single "Contact Name" column or separate First/Last Name columns
+  // (common in exports from other CRMs -- this is what actually fixes
+  // misaligned columns, matching by name instead of assuming a fixed
+  // position, rather than just picking a different fixed order).
+  const CONTACT_HEADER_ALIASES = {
+    business_name: ['business name', 'business', 'company', 'company name'],
+    first_name: ['first name', 'firstname'],
+    last_name: ['last name', 'lastname'],
+    contact_name: ['contact name', 'name', 'full name'],
+    phone: ['phone', 'phone number', 'telephone'],
+    email: ['email', 'email address'],
+    industry: ['industry', 'category'],
+  };
+
+  function mapContactHeaders(headerCells) {
+    const map = {};
+    headerCells.forEach((cell, i) => {
+      const norm = cell.trim().toLowerCase();
+      for (const [field, aliases] of Object.entries(CONTACT_HEADER_ALIASES)) {
+        if (aliases.includes(norm)) { map[field] = i; break; }
+      }
+    });
+    return map;
+  }
+
+  function contactRowFromCells(cells, headerMap, assigned) {
+    if (headerMap) {
+      const get = (field) => headerMap[field] != null ? (cells[headerMap[field]] || '').trim() : '';
+      let contactName = get('contact_name');
+      if (!contactName) contactName = [get('first_name'), get('last_name')].filter(Boolean).join(' ');
+      return {
+        business_name: get('business_name'),
+        contact_name: contactName || null,
+        phone: get('phone'),
+        industry: get('industry') || null,
+        email: get('email') || null,
+        assigned_to: assigned,
+      };
+    }
+    // No recognizable header -- fall back to the original fixed order:
+    // Business Name, Contact Name, Phone, Industry, Email.
+    return {
+      business_name: cells[0] || '',
+      contact_name: cells[1] || null,
+      phone: cells[2] || '',
+      industry: cells[3] || null,
+      email: cells[4] || null,
+      assigned_to: assigned,
+    };
+  }
+
+  function parseContactRows(lines, splitFn, assigned) {
+    const firstCells = splitFn(lines[0]);
+    const headerMap = mapContactHeaders(firstCells);
+    const hasHeader = Object.keys(headerMap).length >= 2;
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+    return dataLines
+      .map((line) => contactRowFromCells(splitFn(line), hasHeader ? headerMap : null, assigned))
+      .filter((r) => r.business_name && r.phone);
+  }
+
   document.getElementById('bulk-add-btn').addEventListener('click', async () => {
     const errEl = document.getElementById('bulk-add-error');
     const okEl = document.getElementById('bulk-add-success');
@@ -499,18 +561,7 @@
     const lines = document.getElementById('bulk-text').value.split('\n').map((l) => l.trim()).filter(Boolean);
     if (!lines.length) { errEl.textContent = 'Paste at least one line.'; return; }
 
-    const rows = lines.map((line) => {
-      const parts = line.split(',').map((p) => p.trim());
-      return {
-        business_name: parts[0] || '',
-        contact_name: parts[1] || null,
-        phone: parts[2] || '',
-        industry: parts[3] || null,
-        email: parts[4] || null,
-        assigned_to: assigned,
-      };
-    }).filter((r) => r.business_name && r.phone);
-
+    const rows = parseContactRows(lines, (line) => line.split(',').map((p) => p.trim()), assigned);
     if (!rows.length) { errEl.textContent = "Couldn't find any valid rows (need at least a business name and phone)."; return; }
 
     const { error } = await client.from('contacts').insert(rows);
@@ -518,6 +569,21 @@
     okEl.textContent = `Added ${rows.length} contact(s).`;
     document.getElementById('bulk-text').value = '';
     loadContacts();
+  });
+
+  document.getElementById('download-template-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    const csv = 'Business Name,First Name,Last Name,Phone,Industry,Email\r\n'
+      + 'Example Roofing Co,Pat,Reyes,727-555-0110,Roofing,pat@exampleroofing.com\r\n';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'bni-ignite-contacts-template.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   });
 
   // Handles quoted fields with embedded commas (e.g. a business name like
@@ -566,27 +632,12 @@
     }
 
     const text = await file.text();
-    let lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     e.target.value = '';
 
     if (!lines.length) { errEl.textContent = 'That file looks empty.'; return; }
 
-    const firstLower = lines[0].toLowerCase();
-    if (firstLower.includes('business') || firstLower.includes('phone')) {
-      lines = lines.slice(1);
-    }
-
-    const rows = lines.map((line) => {
-      const cells = parseCsvLine(line);
-      return {
-        business_name: cells[0] || '',
-        contact_name: cells[1] || null,
-        phone: cells[2] || '',
-        industry: cells[3] || null,
-        email: cells[4] || null,
-        assigned_to: assigned,
-      };
-    }).filter((r) => r.business_name && r.phone);
+    const rows = parseContactRows(lines, parseCsvLine, assigned);
 
     if (!rows.length) {
       errEl.textContent = "Couldn't find any valid rows in that file (need at least a business name and phone).";

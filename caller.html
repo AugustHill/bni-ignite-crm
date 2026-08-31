@@ -93,6 +93,10 @@
           <option value="warm">Warm</option>
         </select>
       </div>
+      <div class="form-group" style="grid-column: 1 / -1;">
+        <label for="ac-notes">Notes (optional)</label>
+        <textarea id="ac-notes"></textarea>
+      </div>
       <div style="grid-column: 1 / -1;">
         <button type="submit" class="btn btn--primary">Add Contact</button>
         <p class="error-msg" id="add-contact-error"></p>
@@ -380,6 +384,7 @@
       email: document.getElementById('ac-email').value.trim() || null,
       industry: document.getElementById('ac-industry').value.trim() || null,
       lead_temperature: document.getElementById('ac-temperature').value,
+      notes: document.getElementById('ac-notes').value.trim() || null,
       assigned_to: profile.id,
     });
 
