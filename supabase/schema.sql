@@ -59,10 +59,10 @@ create policy "coordinator manages all profiles"
 
 -- ============================================================================
 -- contacts: businesses to call. Coordinator has full access; a caller can
--- see and log against only the contacts assigned to her. Stage mostly moves
+-- see and log against only the contacts assigned to her. Status mostly moves
 -- forward automatically via the call_logs trigger below -- the coordinator
 -- edits it directly for the later steps only she'd know about firsthand
--- (a visitor actually showing up, applying, getting approved).
+-- (a visitor actually showing up, getting approved).
 -- ============================================================================
 create table if not exists contacts (
   id uuid primary key default gen_random_uuid(),
@@ -73,9 +73,9 @@ create table if not exists contacts (
   industry text,
   lead_temperature text not null default 'cold' check (lead_temperature in ('warm', 'cold')),
   notes text,
-  stage text not null default 'not_called' check (stage in (
-    'not_called', 'called', 'reached', 'visitor_booked', 'visitor_attended',
-    'applied', 'joined', 'not_interested'
+  status text not null default 'uncontacted' check (status in (
+    'uncontacted', 'no_answer', 'not_interested', 'visit_scheduled',
+    'visit_attended', 'joined_bni'
   )),
   dnc boolean not null default false,
   dnc_reason text,
@@ -108,7 +108,7 @@ create policy "caller adds contacts assigned to herself"
 -- ============================================================================
 -- call_logs: one row per call attempt. This is the caller's real write
 -- surface -- she logs outcomes here rather than editing contacts directly,
--- and a trigger below rolls the outcome up into contacts.stage/dnc so the
+-- and a trigger below rolls the outcome up into contacts.status/dnc so the
 -- two can never disagree.
 -- ============================================================================
 create table if not exists call_logs (
@@ -147,11 +147,15 @@ create policy "caller logs calls for her assigned contacts"
     )
   );
 
--- Applies a logged call's outcome to its parent contact: advances stage,
+-- Applies a logged call's outcome to its parent contact: advances status,
 -- and -- this is the DNC enforcement Derrick asked for -- the instant
 -- "dnc_requested" is logged, the contact is flagged and drops out of the
 -- caller's active queue (queue filtering happens in caller.html, keyed off
--- this same dnc flag).
+-- this same dnc flag). "reached_conversation" rolls up into no_answer for
+-- status purposes -- the granular outcome is still preserved per-call here
+-- in call_logs, this just means the aggregate status doesn't have a
+-- dedicated bucket for "talked to them, nothing scheduled yet" since
+-- Derrick's status list doesn't include one.
 create or replace function apply_call_outcome()
 returns trigger
 language plpgsql
@@ -160,12 +164,12 @@ as $$
 begin
   update contacts set
     updated_at = now(),
-    stage = case new.outcome
-      when 'reached_conversation' then 'reached'
+    status = case new.outcome
+      when 'reached_conversation' then 'no_answer'
       when 'not_interested' then 'not_interested'
       when 'dnc_requested' then 'not_interested'
-      when 'accepted_invitation' then 'visitor_booked'
-      else case when stage = 'not_called' then 'called' else stage end
+      when 'accepted_invitation' then 'visit_scheduled'
+      else case when status = 'uncontacted' then 'no_answer' else status end
     end,
     dnc = case when new.outcome = 'dnc_requested' then true else dnc end,
     dnc_reason = case when new.outcome = 'dnc_requested'

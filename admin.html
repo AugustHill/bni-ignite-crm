@@ -13,7 +13,7 @@
   .call-history-item { padding: 8px 0; border-bottom: 1px solid var(--color-border); font-size: 0.83rem; }
   .call-history-item:last-child { border-bottom: none; }
   .call-history-item .when { color: var(--color-text-muted); font-size: 0.76rem; }
-  .stage-select, .assign-select, .temperature-select { font-size: 0.78rem; padding: 5px 6px; }
+  .status-select, .assign-select, .temperature-select { font-size: 0.78rem; padding: 5px 6px; }
   .progress-wrap { margin-top: 10px; }
   .progress-labels { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 6px; }
 </style>
@@ -57,10 +57,9 @@
         <div class="stat-card"><div class="stat-num" id="f-voicemail">–</div><div class="stat-label">Voicemails Left</div></div>
         <div class="stat-card"><div class="stat-num" id="f-conversations">–</div><div class="stat-label">Conversations</div></div>
         <div class="stat-card"><div class="stat-num" id="f-invited">–</div><div class="stat-label">Invitations Accepted</div></div>
-        <div class="stat-card"><div class="stat-num" id="f-booked">–</div><div class="stat-label">Visitors Booked</div></div>
-        <div class="stat-card"><div class="stat-num" id="f-attended">–</div><div class="stat-label">Visitors Attended</div></div>
-        <div class="stat-card"><div class="stat-num" id="f-applied">–</div><div class="stat-label">Applied</div></div>
-        <div class="stat-card"><div class="stat-num" id="f-joined">–</div><div class="stat-label">Joined</div></div>
+        <div class="stat-card"><div class="stat-num" id="f-booked">–</div><div class="stat-label">Visit Scheduled</div></div>
+        <div class="stat-card"><div class="stat-num" id="f-attended">–</div><div class="stat-label">Visit Attended</div></div>
+        <div class="stat-card"><div class="stat-num" id="f-joined">–</div><div class="stat-label">Joined BNI</div></div>
       </div>
     </div>
   </div>
@@ -220,12 +219,12 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/session.js"></script>
 <script>
-  const STAGE_LABELS = {
-    not_called: 'Not called yet', called: 'Called', reached: 'Reached',
-    visitor_booked: 'Visitor booked', visitor_attended: 'Visitor attended',
-    applied: 'Applied', joined: 'Joined', not_interested: 'Not interested',
+  const STATUS_LABELS = {
+    uncontacted: 'Uncontacted', no_answer: 'No Answer',
+    visit_scheduled: 'Visit Scheduled', visit_attended: 'Visit Attended',
+    joined_bni: 'Joined BNI', not_interested: 'Not Interested',
   };
-  const STAGE_ORDER = ['not_called', 'called', 'reached', 'visitor_booked', 'visitor_attended', 'applied', 'joined'];
+  const STATUS_ORDER = ['uncontacted', 'no_answer', 'visit_scheduled', 'visit_attended', 'joined_bni'];
   const OUTCOME_LABELS = {
     no_answer: 'No answer', left_voicemail: 'Left a voicemail',
     reached_conversation: 'Reached, had a conversation', not_interested: 'Not interested',
@@ -266,28 +265,27 @@
     const goalContainer = document.getElementById('goal-container');
     const [{ data: goal }, { data: contacts }, { data: logs }] = await Promise.all([
       client.from('gps_goal').select('*').eq('id', 1).maybeSingle(),
-      client.from('contacts').select('stage'),
+      client.from('contacts').select('status'),
       client.from('call_logs').select('outcome'),
     ]);
 
     const c = contacts || [];
     const l = logs || [];
-    const atOrPast = (stage) => c.filter((x) => STAGE_ORDER.indexOf(x.stage) >= STAGE_ORDER.indexOf(stage)).length;
+    const atOrPast = (status) => c.filter((x) => STATUS_ORDER.indexOf(x.status) >= STATUS_ORDER.indexOf(status)).length;
 
     document.getElementById('f-calls').textContent = l.length;
     document.getElementById('f-voicemail').textContent = l.filter((x) => x.outcome === 'left_voicemail').length;
     document.getElementById('f-conversations').textContent = l.filter((x) => x.outcome === 'reached_conversation').length;
     document.getElementById('f-invited').textContent = l.filter((x) => x.outcome === 'accepted_invitation').length;
-    document.getElementById('f-booked').textContent = atOrPast('visitor_booked');
-    document.getElementById('f-attended').textContent = atOrPast('visitor_attended');
-    document.getElementById('f-applied').textContent = atOrPast('applied');
-    document.getElementById('f-joined').textContent = atOrPast('joined');
+    document.getElementById('f-booked').textContent = atOrPast('visit_scheduled');
+    document.getElementById('f-attended').textContent = atOrPast('visit_attended');
+    document.getElementById('f-joined').textContent = atOrPast('joined_bni');
 
     if (!goal) {
       goalContainer.innerHTML = '<p class="empty-state">No goal set yet. Run the gps_goal insert from schema.sql.</p>';
       return;
     }
-    const joined = atOrPast('joined');
+    const joined = atOrPast('joined_bni');
     const current = goal.starting_number + joined;
     const span = goal.target_number - goal.starting_number;
     const pct = span > 0 ? Math.min(100, Math.max(0, Math.round(((current - goal.starting_number) / span) * 100))) : 0;
@@ -318,7 +316,7 @@
     }
 
     const callerOpts = (selectedId) => callers.map((c) => `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${c.full_name}</option>`).join('');
-    const stageOpts = (selected) => Object.entries(STAGE_LABELS).map(([v, l]) => `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('');
+    const statusOpts = (selected) => Object.entries(STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('');
 
     tbody.innerHTML = data.map((c) => `
       <tr data-row="${c.id}">
@@ -332,7 +330,7 @@
             <option value="warm" ${c.lead_temperature === 'warm' ? 'selected' : ''}>Warm</option>
           </select>
         </td>
-        <td><select class="stage-select" data-id="${c.id}">${stageOpts(c.stage)}</select></td>
+        <td><select class="status-select" data-id="${c.id}">${statusOpts(c.status)}</select></td>
         <td><select class="assign-select" data-id="${c.id}">${callerOpts(c.assigned_to)}</select></td>
         <td style="white-space:nowrap;">
           <button type="button" class="btn btn--outline btn--sm view-toggle" data-id="${c.id}">View</button>
@@ -350,9 +348,9 @@
       </tr>
     `).join('');
 
-    tbody.querySelectorAll('.stage-select').forEach((sel) => {
+    tbody.querySelectorAll('.status-select').forEach((sel) => {
       sel.addEventListener('change', async (e) => {
-        await client.from('contacts').update({ stage: e.target.value }).eq('id', e.target.dataset.id);
+        await client.from('contacts').update({ status: e.target.value }).eq('id', e.target.dataset.id);
         loadDashboard();
       });
     });
@@ -432,10 +430,10 @@
   document.getElementById('export-csv-btn').addEventListener('click', () => {
     if (!currentContacts.length) { alert('No contacts to export yet.'); return; }
 
-    const headers = ['Business Name', 'Contact Name', 'Phone', 'Email', 'Industry', 'Lead Type', 'Stage', 'DNC', 'Assigned To', 'Added By', 'Added On', 'Notes'];
+    const headers = ['Business Name', 'Contact Name', 'Phone', 'Email', 'Industry', 'Lead Type', 'Status', 'DNC', 'Assigned To', 'Added By', 'Added On', 'Notes'];
     const rows = currentContacts.map((c) => [
       c.business_name, c.contact_name, c.phone, c.email, c.industry,
-      c.lead_temperature, c.stage, c.dnc ? 'Yes' : 'No',
+      c.lead_temperature, STATUS_LABELS[c.status] || c.status, c.dnc ? 'Yes' : 'No',
       c.assignee ? c.assignee.full_name : '', c.creator ? c.creator.full_name : '',
       new Date(c.created_at).toLocaleString(), c.notes,
     ]);
@@ -760,7 +758,7 @@
       // it can't be misread as "Caller" (the dropdown's first option) or
       // accidentally reassigned by an idle click.
       const roleCell = p.role === 'owner'
-        ? '<span class="badge badge--stage-joined">Owner</span>'
+        ? '<span class="badge badge--status-joined_bni">Owner</span>'
         : `<select class="member-role" data-id="${p.id}">
             <option value="caller" ${p.role === 'caller' ? 'selected' : ''}>Caller</option>
             <option value="coordinator" ${p.role === 'coordinator' ? 'selected' : ''}>Administrator</option>

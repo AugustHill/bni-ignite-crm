@@ -113,6 +113,12 @@ database, neither touches existing data beyond tagging ownership:
 - `supabase/migration_009_call_scripts.sql` — adds the Script Book and
   seeds it with the three GRIP-method scripts (Cold Call, Warm Call,
   Voicemail). Everyone can read; only an administrator can edit.
+- `supabase/migration_010_status_rename.sql` — renames `contacts.stage` to
+  `contacts.status` and replaces the old 8-value list with a new 6-value
+  one: Uncontacted, No Answer, Not Interested, Visit Scheduled, Visit
+  Attended, Joined BNI. Existing contacts are remapped automatically
+  (details in the migration file); the call-outcome trigger is updated to
+  match.
 
 ## How the pieces fit together
 

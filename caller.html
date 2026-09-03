@@ -156,10 +156,10 @@
     accepted_invitation: 'Accepted the invitation to visit',
     callback_requested: 'Asked for a callback',
   };
-  const STAGE_LABELS = {
-    not_called: 'Not called yet', called: 'Called', reached: 'Reached',
-    visitor_booked: 'Visitor booked', visitor_attended: 'Visitor attended',
-    applied: 'Applied', joined: 'Joined', not_interested: 'Not interested',
+  const STATUS_LABELS = {
+    uncontacted: 'Uncontacted', no_answer: 'No Answer',
+    visit_scheduled: 'Visit Scheduled', visit_attended: 'Visit Attended',
+    joined_bni: 'Joined BNI', not_interested: 'Not Interested',
   };
 
   let client, profile;
@@ -215,7 +215,7 @@
       .select('*')
       .eq('assigned_to', profile.id)
       .eq('dnc', false)
-      .not('stage', 'in', '(joined,not_interested)')
+      .not('status', 'in', '(joined_bni,not_interested)')
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -236,7 +236,7 @@
           </div>
           <div class="contact-badges">
             <span class="badge badge--${c.lead_temperature}">${c.lead_temperature === 'warm' ? 'Warm' : 'Cold'}</span>
-            <span class="badge badge--stage-${c.stage}">${STAGE_LABELS[c.stage] || c.stage}</span>
+            <span class="badge badge--status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span>
             ${c.email ? `<a class="btn btn--outline btn--sm" href="mailto:${c.email}">Email</a>` : ''}
             <button type="button" class="btn btn--accent btn--sm log-toggle">Log a call</button>
           </div>
