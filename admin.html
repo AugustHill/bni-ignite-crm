@@ -13,7 +13,9 @@
   .call-history-item { padding: 8px 0; border-bottom: 1px solid var(--color-border); font-size: 0.83rem; }
   .call-history-item:last-child { border-bottom: none; }
   .call-history-item .when { color: var(--color-text-muted); font-size: 0.76rem; }
-  .status-select, .assign-select, .temperature-select { font-size: 0.78rem; padding: 5px 6px; }
+  .status-select, .temperature-select { font-size: 0.78rem; padding: 5px 6px; }
+  .temperature-select { min-width: 78px; }
+  .status-select { min-width: 145px; }
   .progress-wrap { margin-top: 10px; }
   .progress-labels { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 6px; }
 
@@ -160,7 +162,7 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th><input type="checkbox" id="select-all-contacts"></th><th>Business</th><th>Phone</th><th>Industry</th><th>Type</th><th>Stage</th><th>Assigned</th><th></th></tr></thead>
+          <thead><tr><th><input type="checkbox" id="select-all-contacts"></th><th>Business</th><th>Name</th><th>Phone</th><th>Industry</th><th>Type</th><th>Status</th><th></th></tr></thead>
           <tbody id="contacts-tbody"><tr><td colspan="8" class="empty-state">Loading…</td></tr></tbody>
         </table>
       </div>
@@ -357,13 +359,13 @@
       return;
     }
 
-    const callerOpts = (selectedId) => callers.map((c) => `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${c.full_name}</option>`).join('');
     const statusOpts = (selected) => Object.entries(STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('');
 
     tbody.innerHTML = data.map((c) => `
       <tr data-row="${c.id}">
         <td><input type="checkbox" class="contact-select" data-id="${c.id}"></td>
         <td>${contactDisplayName(c)}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}</td>
+        <td>${c.business_name ? (c.contact_name || '') : ''}</td>
         <td><a href="tel:${c.phone}">${c.phone}</a></td>
         <td>${c.industry || ''}</td>
         <td>
@@ -373,7 +375,6 @@
           </select>
         </td>
         <td><select class="status-select" data-id="${c.id}">${statusOpts(c.status)}</select></td>
-        <td><select class="assign-select" data-id="${c.id}">${callerOpts(c.assigned_to)}</select></td>
         <td style="white-space:nowrap;">
           <button type="button" class="btn btn--outline btn--sm view-toggle" data-id="${c.id}">View</button>
           ${c.email ? `<a class="btn btn--outline btn--sm" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>` : ''}
@@ -401,11 +402,6 @@
     tbody.querySelectorAll('.temperature-select').forEach((sel) => {
       sel.addEventListener('change', async (e) => {
         await client.from('contacts').update({ lead_temperature: e.target.value }).eq('id', e.target.dataset.id);
-      });
-    });
-    tbody.querySelectorAll('.assign-select').forEach((sel) => {
-      sel.addEventListener('change', async (e) => {
-        await client.from('contacts').update({ assigned_to: e.target.value }).eq('id', e.target.dataset.id);
       });
     });
     tbody.querySelectorAll('.view-toggle').forEach((btn) => {
