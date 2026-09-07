@@ -87,8 +87,8 @@
       <h2>Add a Contact</h2>
       <form id="add-contact-form" class="grid grid-2">
         <div class="form-group">
-          <label for="c-business">Business Name</label>
-          <input type="text" id="c-business" required>
+          <label for="c-business">Business Name (optional)</label>
+          <input type="text" id="c-business">
         </div>
         <div class="form-group">
           <label for="c-contact-name">Contact Name</label>
@@ -269,6 +269,13 @@
 
   let client, profile, callers = [], currentContacts = [];
 
+  // business_name is optional (some uploads are personal contacts with no
+  // company attached) -- fall back to the person's name, or a plain
+  // placeholder, anywhere a contact needs a one-line label.
+  function contactDisplayName(c) {
+    return c.business_name || c.contact_name || '(no name)';
+  }
+
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('is-active'));
@@ -356,7 +363,7 @@
     tbody.innerHTML = data.map((c) => `
       <tr data-row="${c.id}">
         <td><input type="checkbox" class="contact-select" data-id="${c.id}"></td>
-        <td>${c.business_name}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}</td>
+        <td>${contactDisplayName(c)}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}</td>
         <td><a href="tel:${c.phone}">${c.phone}</a></td>
         <td>${c.industry || ''}</td>
         <td>
@@ -370,7 +377,7 @@
         <td style="white-space:nowrap;">
           <button type="button" class="btn btn--outline btn--sm view-toggle" data-id="${c.id}">View</button>
           ${c.email ? `<a class="btn btn--outline btn--sm" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>` : ''}
-          <button type="button" class="btn btn--danger btn--sm delete-contact" data-id="${c.id}" data-name="${c.business_name}">Delete</button>
+          <button type="button" class="btn btn--danger btn--sm delete-contact" data-id="${c.id}" data-name="${contactDisplayName(c)}">Delete</button>
         </td>
       </tr>
       <tr class="detail-row" data-detail="${c.id}" style="display:none;">
@@ -509,7 +516,7 @@
     if (!assigned) { errEl.textContent = 'Add a caller profile before adding contacts (see README.md).'; return; }
 
     const { error } = await client.from('contacts').insert({
-      business_name: document.getElementById('c-business').value.trim(),
+      business_name: document.getElementById('c-business').value.trim() || null,
       contact_name: document.getElementById('c-contact-name').value.trim() || null,
       phone: document.getElementById('c-phone').value.trim(),
       email: document.getElementById('c-email').value.trim() || null,
@@ -555,7 +562,7 @@
       let contactName = get('contact_name');
       if (!contactName) contactName = [get('first_name'), get('last_name')].filter(Boolean).join(' ');
       return {
-        business_name: get('business_name'),
+        business_name: get('business_name') || null,
         contact_name: contactName || null,
         phone: get('phone'),
         industry: get('industry') || null,
@@ -566,7 +573,7 @@
     // No recognizable header -- fall back to the original fixed order:
     // Business Name, Contact Name, Phone, Industry, Email.
     return {
-      business_name: cells[0] || '',
+      business_name: cells[0] || null,
       contact_name: cells[1] || null,
       phone: cells[2] || '',
       industry: cells[3] || null,
@@ -582,7 +589,7 @@
     const dataLines = hasHeader ? lines.slice(1) : lines;
     return dataLines
       .map((line) => contactRowFromCells(splitFn(line), hasHeader ? headerMap : null, assigned))
-      .filter((r) => r.business_name && r.phone);
+      .filter((r) => r.phone);
   }
 
   document.getElementById('bulk-add-btn').addEventListener('click', async () => {
@@ -786,8 +793,7 @@
           return;
         }
       }
-      if (!counts.business_name) { errEl.textContent = 'Match a column to Business Name before continuing.'; return; }
-      if (!counts.phone) { errEl.textContent = 'Match a column to Phone Number before continuing.'; return; }
+      if (!counts.phone) { errEl.textContent = 'Match a column to Phone Number before continuing. Every contact needs at least a phone number, everything else is optional.'; return; }
       computeWizardContacts();
       renderWizardStep('preview');
     });
@@ -817,7 +823,7 @@
         .filter(Boolean).join('\n');
 
       return {
-        business_name: get(businessCol),
+        business_name: get(businessCol) || null,
         contact_name: contactName || null,
         phone: get(phoneCol),
         email: get(emailCol) || null,
@@ -825,7 +831,7 @@
         mailing_address: mailingAddress || null,
         additional_info: additionalInfo || null,
       };
-    }).filter((r) => r.business_name && r.phone);
+    }).filter((r) => r.phone);
   }
 
   function renderPreviewStep() {
@@ -834,12 +840,12 @@
     const previewRows = rows.slice(0, 15);
 
     document.getElementById('wizard-body').innerHTML = `
-      <p class="hint">${rows.length} contact(s) ready to import${skipped ? ` (${skipped} row(s) skipped, missing a business name or phone)` : ''}. Here's a preview of the first ${previewRows.length}:</p>
+      <p class="hint">${rows.length} contact(s) ready to import${skipped ? ` (${skipped} row(s) skipped, missing a phone number)` : ''}. Here's a preview of the first ${previewRows.length}:</p>
       <div class="wizard-table-wrap">
         <table>
           <thead><tr><th>Business</th><th>Contact</th><th>Phone</th><th>Industry</th><th>Email</th><th>Address</th></tr></thead>
           <tbody>
-            ${previewRows.map((r) => `<tr><td>${r.business_name}</td><td>${r.contact_name || ''}</td><td>${r.phone}</td><td>${r.industry || ''}</td><td>${r.email || ''}</td><td>${r.mailing_address || ''}</td></tr>`).join('')}
+            ${previewRows.map((r) => `<tr><td>${r.business_name || ''}</td><td>${r.contact_name || ''}</td><td>${r.phone}</td><td>${r.industry || ''}</td><td>${r.email || ''}</td><td>${r.mailing_address || ''}</td></tr>`).join('')}
           </tbody>
         </table>
       </div>
@@ -878,11 +884,11 @@
   function normalizePhoneDigits(p) { return (p || '').replace(/\D/g, ''); }
 
   async function computeWizardDuplicates() {
-    const { data: existing } = await client.from('contacts').select('business_name, phone');
+    const { data: existing } = await client.from('contacts').select('business_name, contact_name, phone');
     const existingPhones = new Map();
     (existing || []).forEach((c) => {
       const n = normalizePhoneDigits(c.phone);
-      if (n) existingPhones.set(n, c.business_name);
+      if (n) existingPhones.set(n, contactDisplayName(c));
     });
 
     const seenInBatch = new Map();
@@ -906,7 +912,7 @@
           const c = wizardState.contacts[d.index];
           return `<div class="dup-row">
             <input type="checkbox" class="dup-skip" data-index="${d.index}" checked>
-            <div><strong>${c.business_name}</strong> &middot; ${c.phone}<br><span class="col-sample">${d.reason}</span></div>
+            <div><strong>${contactDisplayName(c)}</strong> &middot; ${c.phone}<br><span class="col-sample">${d.reason}</span></div>
           </div>`;
         }).join('')}
       </div>
@@ -967,7 +973,7 @@
     }
     tbody.innerHTML = data.map((c) => `
       <tr>
-        <td>${c.business_name}</td>
+        <td>${contactDisplayName(c)}</td>
         <td>${c.phone}</td>
         <td>${c.dnc_reason || ''}</td>
         <td>${c.dnc_at ? new Date(c.dnc_at).toLocaleDateString() : ''}</td>

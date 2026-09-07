@@ -67,8 +67,8 @@
     <h2>Add a Contact</h2>
     <form id="add-contact-form" class="grid grid-2">
       <div class="form-group">
-        <label for="ac-business">Business Name</label>
-        <input type="text" id="ac-business" required>
+        <label for="ac-business">Business Name (optional)</label>
+        <input type="text" id="ac-business">
       </div>
       <div class="form-group">
         <label for="ac-contact-name">Contact Name</label>
@@ -231,8 +231,8 @@
       <div class="contact-card" data-id="${c.id}">
         <div class="contact-card-top">
           <div>
-            <h3>${c.business_name}</h3>
-            <p class="contact-meta">${c.contact_name ? c.contact_name + ' · ' : ''}<a href="tel:${c.phone}">${c.phone}</a>${c.industry ? ' · ' + c.industry : ''}</p>
+            <h3>${c.business_name || c.contact_name || '(no name)'}</h3>
+            <p class="contact-meta">${c.business_name && c.contact_name ? c.contact_name + ' · ' : ''}<a href="tel:${c.phone}">${c.phone}</a>${c.industry ? ' · ' + c.industry : ''}</p>
           </div>
           <div class="contact-badges">
             <span class="badge badge--${c.lead_temperature}">${c.lead_temperature === 'warm' ? 'Warm' : 'Cold'}</span>
@@ -378,7 +378,7 @@
     errEl.textContent = '';
 
     const { error } = await client.from('contacts').insert({
-      business_name: document.getElementById('ac-business').value.trim(),
+      business_name: document.getElementById('ac-business').value.trim() || null,
       contact_name: document.getElementById('ac-contact-name').value.trim() || null,
       phone: document.getElementById('ac-phone').value.trim(),
       email: document.getElementById('ac-email').value.trim() || null,

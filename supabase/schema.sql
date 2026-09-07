@@ -66,7 +66,7 @@ create policy "coordinator manages all profiles"
 -- ============================================================================
 create table if not exists contacts (
   id uuid primary key default gen_random_uuid(),
-  business_name text not null,
+  business_name text,
   contact_name text,
   phone text not null,
   email text,
