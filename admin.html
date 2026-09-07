@@ -611,8 +611,8 @@
 
   document.getElementById('download-template-link').addEventListener('click', (e) => {
     e.preventDefault();
-    const csv = 'Business Name,First Name,Last Name,Phone,Industry,Email\r\n'
-      + 'Example Roofing Co,Pat,Reyes,727-555-0110,Roofing,pat@exampleroofing.com\r\n';
+    const csv = 'First Name,Last Name,Email,Phone Number,Company Name,Industry,Address,City,Zip\r\n'
+      + 'Pat,Reyes,pat@exampleroofing.com,727-555-0110,Example Roofing Co,Roofing,123 Main St,Tampa,33601\r\n';
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
