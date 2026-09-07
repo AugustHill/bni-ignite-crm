@@ -237,7 +237,7 @@
           <div class="contact-badges">
             <span class="badge badge--${c.lead_temperature}">${c.lead_temperature === 'warm' ? 'Warm' : 'Cold'}</span>
             <span class="badge badge--status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span>
-            ${c.email ? `<a class="btn btn--outline btn--sm" href="mailto:${c.email}">Email</a>` : ''}
+            ${c.email ? `<a class="btn btn--outline btn--sm" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>` : ''}
             <button type="button" class="btn btn--accent btn--sm log-toggle">Log a call</button>
           </div>
         </div>

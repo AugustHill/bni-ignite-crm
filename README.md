@@ -119,6 +119,10 @@ database, neither touches existing data beyond tagging ownership:
   Attended, Joined BNI. Existing contacts are remapped automatically
   (details in the migration file); the call-outcome trigger is updated to
   match.
+- `supabase/migration_011_mailing_address.sql` — adds `mailing_address`
+  and `additional_info` to contacts, both freeform text. Powers the CSV
+  import wizard's Mailing Address and Additional Info column targets, and
+  show up on a contact's expanded "View" row when present.
 
 ## How the pieces fit together
 
@@ -134,12 +138,23 @@ database, neither touches existing data beyond tagging ownership:
   again" flags that contact DNC automatically and it drops out of her queue
   from then on — reversible only from your DNC tab, not from her side.
 - **`admin.html`** — Dashboard (calling funnel + progress toward the
-  35-member goal), Contacts (add one at a time or paste many at once), DNC
-  List, Hours & Pay (rate, hours, and amount owed per person), and **Team**
-  (everyone with a login — edit name/role/rate inline, view anyone's GPS
-  plan, add a new caller or administrator with a real working login on the
-  spot). The owner sees an extra **Private** button in the header that no
-  one else gets.
+  35-member goal), Contacts (add one at a time, paste many at once, or
+  upload a CSV file through the import wizard), DNC List, Hours & Pay
+  (rate, hours, and amount owed per person), and **Team** (everyone with a
+  login — edit name/role/rate inline, view anyone's GPS plan, add a new
+  caller or administrator with a real working login on the spot). The
+  owner sees an extra **Private** button in the header that no one else
+  gets.
+  - The CSV import wizard reads your file's header row and shows a
+    dropdown next to each column (Business Name, Contact Name, First/Last
+    Name, Phone Number, Email, Industry, Mailing Address, Additional Info,
+    or Skip) with a best-effort guess already selected, so nothing gets
+    imported until you've confirmed or corrected every column yourself.
+    Multiple columns can map to Mailing Address (e.g. separate
+    Street/City/State/Zip columns) or Additional Info, and get combined.
+    After mapping there's a preview, an assign-to-caller step, and a
+    duplicate-phone check (against both the file itself and existing
+    contacts) before the final import.
 - **`private.html`** — owner-only (enforced by RLS, not just a hidden
   button): a to-do list, a link to the owner's own role-based GPS plan,
   and a list of additional private GPS plans (create/delete here, each

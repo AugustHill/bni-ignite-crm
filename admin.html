@@ -16,6 +16,24 @@
   .status-select, .assign-select, .temperature-select { font-size: 0.78rem; padding: 5px 6px; }
   .progress-wrap { margin-top: 10px; }
   .progress-labels { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 6px; }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: flex-start; justify-content: center; padding: 30px 16px; overflow-y: auto; z-index: 100; }
+  .modal-box { background: var(--color-card); border-radius: var(--radius); box-shadow: var(--shadow-md); width: 100%; max-width: 780px; }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--color-border); }
+  .modal-header h2 { margin: 0; font-size: 1.1rem; }
+  .modal-close { background: none; border: none; font-size: 1.4rem; line-height: 1; cursor: pointer; color: var(--color-text-muted); padding: 4px 8px; }
+  .modal-body { padding: 20px 24px 24px; }
+  .wizard-steps { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+  .wizard-step-chip { font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--color-bg-alt); color: var(--color-text-muted); }
+  .wizard-step-chip.is-current { background: var(--color-primary); color: #fff; }
+  .mapping-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--color-border); }
+  .mapping-row .col-label { font-size: 0.85rem; }
+  .mapping-row .col-sample { display: block; font-size: 0.76rem; color: var(--color-text-muted); margin-top: 2px; }
+  .wizard-table-wrap { max-height: 320px; overflow: auto; border: 1px solid var(--color-border); border-radius: 8px; margin-bottom: 14px; }
+  .wizard-table-wrap table { font-size: 0.78rem; }
+  .wizard-table-wrap th { position: sticky; top: 0; background: var(--color-card); }
+  .dup-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--color-border); font-size: 0.85rem; }
+  .wizard-actions { display: flex; gap: 10px; margin-top: 18px; }
 </style>
 </head>
 <body>
@@ -124,12 +142,11 @@
           <p class="error-msg" id="bulk-add-error"></p>
           <p class="success-msg" id="bulk-add-success"></p>
 
-          <p class="hint" style="margin-top:20px; padding-top:16px; border-top:1px dashed var(--color-border);">Or upload a CSV file. Same header rules as above, a header row naming your columns (First/Last Name or Contact Name, any order) is matched by name, not position, so it won't matter if your export's column order doesn't match what's shown here. <a href="#" id="download-template-link">Download a template</a>.</p>
+          <p class="hint" style="margin-top:20px; padding-top:16px; border-top:1px dashed var(--color-border);">Or upload a CSV file. This opens a setup wizard where you match each column in your file to the right field yourself, so it can't get mismapped no matter how your export is laid out. <a href="#" id="download-template-link">Download a template</a>.</p>
           <div class="form-group">
             <input type="file" id="csv-file" accept=".csv,text/csv">
           </div>
           <p class="error-msg" id="csv-error"></p>
-          <p class="success-msg" id="csv-success"></p>
         </div>
       </details>
     </div>
@@ -211,6 +228,24 @@
           <tbody id="team-tbody"><tr><td colspan="4" class="empty-state">Loading…</td></tr></tbody>
         </table>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="import-wizard" style="display:none;">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h2>Import Contacts</h2>
+      <button type="button" class="modal-close" id="wizard-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="wizard-steps">
+        <span class="wizard-step-chip" data-step="mapping">1. Match Columns</span>
+        <span class="wizard-step-chip" data-step="preview">2. Preview</span>
+        <span class="wizard-step-chip" data-step="assign">3. Assign</span>
+        <span class="wizard-step-chip" data-step="duplicates">4. Duplicates</span>
+      </div>
+      <div id="wizard-body"></div>
     </div>
   </div>
 </div>
@@ -334,15 +369,17 @@
         <td><select class="assign-select" data-id="${c.id}">${callerOpts(c.assigned_to)}</select></td>
         <td style="white-space:nowrap;">
           <button type="button" class="btn btn--outline btn--sm view-toggle" data-id="${c.id}">View</button>
-          ${c.email ? `<a class="btn btn--outline btn--sm" href="mailto:${c.email}">Email</a>` : ''}
+          ${c.email ? `<a class="btn btn--outline btn--sm" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>` : ''}
           <button type="button" class="btn btn--danger btn--sm delete-contact" data-id="${c.id}" data-name="${c.business_name}">Delete</button>
         </td>
       </tr>
       <tr class="detail-row" data-detail="${c.id}" style="display:none;">
         <td colspan="8">
           <p class="hint" style="margin-top:0;">Added by ${c.creator ? c.creator.full_name : 'Unknown'} on ${new Date(c.created_at).toLocaleString()}</p>
-          ${c.email ? `<p class="hint">Email: <a href="mailto:${c.email}">${c.email}</a></p>` : ''}
+          ${c.email ? `<p class="hint">Email: <a href="mailto:${c.email}" target="_blank" rel="noopener">${c.email}</a></p>` : ''}
+          ${c.mailing_address ? `<p class="hint">Mailing address: ${c.mailing_address}</p>` : ''}
           ${c.notes ? `<p class="hint"><strong>Notes:</strong> ${c.notes}</p>` : ''}
+          ${c.additional_info ? `<p class="hint" style="white-space:pre-line;"><strong>Additional info from upload:</strong><br>${c.additional_info}</p>` : ''}
           <div class="call-history" data-history="${c.id}"><p class="hint">Loading call history…</p></div>
         </td>
       </tr>
@@ -615,38 +652,306 @@
 
   document.getElementById('csv-file').addEventListener('change', async (e) => {
     const errEl = document.getElementById('csv-error');
-    const okEl = document.getElementById('csv-success');
     errEl.textContent = '';
-    okEl.textContent = '';
-
     const file = e.target.files[0];
     if (!file) return;
-
-    const assigned = document.getElementById('bulk-assigned').value;
-    if (!assigned) {
-      errEl.textContent = 'Add a caller profile before adding contacts (see README.md).';
-      e.target.value = '';
-      return;
+    try {
+      await openImportWizard(file);
+    } catch (err) {
+      errEl.textContent = err.message || 'Could not read that file.';
     }
+    e.target.value = '';
+  });
 
+  // ---------- Import wizard ----------
+  // Replaces guessing at a bulk-uploaded file's column layout: we read the
+  // header row, guess a starting mapping the same way the paste box does,
+  // but nothing is imported until a human confirms (or corrects) what every
+  // column actually is. That's what stops a file shaped differently than
+  // expected from silently shifting data into the wrong fields.
+  const WIZARD_FIELD_OPTIONS = [
+    { value: '', label: 'Skip this column' },
+    { value: 'business_name', label: 'Business Name' },
+    { value: 'contact_name', label: 'Contact Name' },
+    { value: 'first_name', label: 'First Name' },
+    { value: 'last_name', label: 'Last Name' },
+    { value: 'phone', label: 'Phone Number' },
+    { value: 'email', label: 'Email' },
+    { value: 'industry', label: 'Industry' },
+    { value: 'mailing_address', label: 'Mailing Address' },
+    { value: 'additional_info', label: 'Additional Info' },
+  ];
+  const WIZARD_HEADER_ALIASES = {
+    business_name: ['business name', 'business', 'company', 'company name'],
+    first_name: ['first name', 'firstname'],
+    last_name: ['last name', 'lastname'],
+    contact_name: ['contact name', 'name', 'full name'],
+    phone: ['phone', 'phone number', 'telephone', 'cell', 'cell phone', 'mobile'],
+    email: ['email', 'email address'],
+    industry: ['industry', 'category'],
+    mailing_address: ['address', 'mailing address', 'street address', 'street', 'city', 'state', 'zip', 'zip code', 'postal code'],
+  };
+  // Anything that doesn't match a known column name defaults to Additional
+  // Info rather than being skipped, so real data in the file isn't silently
+  // thrown away -- the mapping screen still shows it, so it's one click to
+  // change to Skip if it's actually junk.
+  function guessFieldForHeader(headerText) {
+    const norm = (headerText || '').trim().toLowerCase();
+    for (const [field, aliases] of Object.entries(WIZARD_HEADER_ALIASES)) {
+      if (aliases.includes(norm)) return field;
+    }
+    return norm ? 'additional_info' : '';
+  }
+
+  let wizardState = null;
+
+  async function openImportWizard(file) {
     const text = await file.text();
     const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    e.target.value = '';
+    if (!lines.length) throw new Error('That file looks empty.');
 
-    if (!lines.length) { errEl.textContent = 'That file looks empty.'; return; }
+    const headerCells = parseCsvLine(lines[0]);
+    const dataRows = lines.slice(1).map((l) => parseCsvLine(l));
+    if (!dataRows.length) throw new Error('That file has a header row but no data rows under it.');
 
-    const rows = parseContactRows(lines, parseCsvLine, assigned);
+    wizardState = {
+      headerCells,
+      dataRows,
+      mapping: headerCells.map((h) => guessFieldForHeader(h)),
+      contacts: [],
+      assignedTo: '',
+      duplicates: [],
+    };
 
-    if (!rows.length) {
-      errEl.textContent = "Couldn't find any valid rows in that file (need at least a business name and phone).";
-      return;
-    }
+    document.getElementById('import-wizard').style.display = 'flex';
+    renderWizardStep('mapping');
+  }
+
+  function closeWizard() {
+    document.getElementById('import-wizard').style.display = 'none';
+    wizardState = null;
+  }
+  document.getElementById('wizard-close').addEventListener('click', closeWizard);
+  document.getElementById('import-wizard').addEventListener('click', (e) => {
+    if (e.target.id === 'import-wizard') closeWizard();
+  });
+
+  function renderWizardStep(step) {
+    document.querySelectorAll('.wizard-step-chip').forEach((chip) => {
+      chip.classList.toggle('is-current', chip.dataset.step === step);
+    });
+    if (step === 'mapping') renderMappingStep();
+    else if (step === 'preview') renderPreviewStep();
+    else if (step === 'assign') renderAssignStep();
+    else if (step === 'duplicates') renderDuplicatesStep();
+  }
+
+  function renderMappingStep() {
+    const optsHtml = (selected) => WIZARD_FIELD_OPTIONS.map((o) => `<option value="${o.value}" ${o.value === selected ? 'selected' : ''}>${o.label}</option>`).join('');
+    const sampleRow = wizardState.dataRows[0] || [];
+    const rowsHtml = wizardState.headerCells.map((h, i) => `
+      <div class="mapping-row">
+        <div>
+          <span class="col-label"><strong>${h || '(blank header)'}</strong></span>
+          <span class="col-sample">e.g. "${(sampleRow[i] || '').slice(0, 40)}"</span>
+        </div>
+        <select class="mapping-select" data-col="${i}">${optsHtml(wizardState.mapping[i])}</select>
+      </div>
+    `).join('');
+
+    document.getElementById('wizard-body').innerHTML = `
+      <p class="hint">Tell us what each column in your file actually is. We've guessed based on the column names, double check before continuing, especially anything guessed as Additional Info.</p>
+      <div>${rowsHtml}</div>
+      <p class="error-msg" id="wizard-mapping-error"></p>
+      <div class="wizard-actions">
+        <button type="button" class="btn btn--outline" id="wizard-cancel-1">Cancel</button>
+        <button type="button" class="btn btn--primary" id="wizard-next-1">Next: Preview</button>
+      </div>
+    `;
+
+    document.querySelectorAll('.mapping-select').forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        wizardState.mapping[Number(e.target.dataset.col)] = e.target.value;
+      });
+    });
+    document.getElementById('wizard-cancel-1').addEventListener('click', closeWizard);
+    document.getElementById('wizard-next-1').addEventListener('click', () => {
+      const errEl = document.getElementById('wizard-mapping-error');
+      const counts = {};
+      wizardState.mapping.forEach((f) => { if (f) counts[f] = (counts[f] || 0) + 1; });
+      const singleValueFields = ['business_name', 'phone', 'email', 'industry'];
+      for (const f of singleValueFields) {
+        if (counts[f] > 1) {
+          errEl.textContent = `Only one column can be mapped to ${WIZARD_FIELD_OPTIONS.find((o) => o.value === f).label}.`;
+          return;
+        }
+      }
+      if (!counts.business_name) { errEl.textContent = 'Match a column to Business Name before continuing.'; return; }
+      if (!counts.phone) { errEl.textContent = 'Match a column to Phone Number before continuing.'; return; }
+      computeWizardContacts();
+      renderWizardStep('preview');
+    });
+  }
+
+  function computeWizardContacts() {
+    const mapping = wizardState.mapping;
+    const colsFor = (field) => mapping.map((f, i) => (f === field ? i : -1)).filter((i) => i >= 0);
+    const oneCol = (field) => colsFor(field)[0];
+    const businessCol = oneCol('business_name');
+    const contactCol = oneCol('contact_name');
+    const firstCol = oneCol('first_name');
+    const lastCol = oneCol('last_name');
+    const phoneCol = oneCol('phone');
+    const emailCol = oneCol('email');
+    const industryCol = oneCol('industry');
+    const addressCols = colsFor('mailing_address');
+    const extraCols = colsFor('additional_info');
+
+    wizardState.contacts = wizardState.dataRows.map((cells) => {
+      const get = (i) => (i != null && i >= 0 ? (cells[i] || '').trim() : '');
+      let contactName = get(contactCol);
+      if (!contactName) contactName = [get(firstCol), get(lastCol)].filter(Boolean).join(' ');
+      const mailingAddress = addressCols.map((i) => get(i)).filter(Boolean).join(', ');
+      const additionalInfo = extraCols
+        .map((i) => (get(i) ? `${wizardState.headerCells[i]}: ${get(i)}` : ''))
+        .filter(Boolean).join('\n');
+
+      return {
+        business_name: get(businessCol),
+        contact_name: contactName || null,
+        phone: get(phoneCol),
+        email: get(emailCol) || null,
+        industry: get(industryCol) || null,
+        mailing_address: mailingAddress || null,
+        additional_info: additionalInfo || null,
+      };
+    }).filter((r) => r.business_name && r.phone);
+  }
+
+  function renderPreviewStep() {
+    const rows = wizardState.contacts;
+    const skipped = wizardState.dataRows.length - rows.length;
+    const previewRows = rows.slice(0, 15);
+
+    document.getElementById('wizard-body').innerHTML = `
+      <p class="hint">${rows.length} contact(s) ready to import${skipped ? ` (${skipped} row(s) skipped, missing a business name or phone)` : ''}. Here's a preview of the first ${previewRows.length}:</p>
+      <div class="wizard-table-wrap">
+        <table>
+          <thead><tr><th>Business</th><th>Contact</th><th>Phone</th><th>Industry</th><th>Email</th><th>Address</th></tr></thead>
+          <tbody>
+            ${previewRows.map((r) => `<tr><td>${r.business_name}</td><td>${r.contact_name || ''}</td><td>${r.phone}</td><td>${r.industry || ''}</td><td>${r.email || ''}</td><td>${r.mailing_address || ''}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div class="wizard-actions">
+        <button type="button" class="btn btn--outline" id="wizard-back-2">Back</button>
+        <button type="button" class="btn btn--primary" id="wizard-next-2" ${rows.length ? '' : 'disabled'}>Next: Assign</button>
+      </div>
+    `;
+    document.getElementById('wizard-back-2').addEventListener('click', () => renderWizardStep('mapping'));
+    document.getElementById('wizard-next-2').addEventListener('click', () => renderWizardStep('assign'));
+  }
+
+  function renderAssignStep() {
+    const opts = callers.map((c) => `<option value="${c.id}" ${c.id === wizardState.assignedTo ? 'selected' : ''}>${c.full_name}</option>`).join('');
+    document.getElementById('wizard-body').innerHTML = `
+      <div class="form-group">
+        <label for="wizard-assign-select">Assign all ${wizardState.contacts.length} contact(s) to</label>
+        <select id="wizard-assign-select"><option value="">Choose a caller…</option>${opts}</select>
+      </div>
+      <p class="error-msg" id="wizard-assign-error"></p>
+      <div class="wizard-actions">
+        <button type="button" class="btn btn--outline" id="wizard-back-3">Back</button>
+        <button type="button" class="btn btn--primary" id="wizard-next-3">Next: Check Duplicates</button>
+      </div>
+    `;
+    document.getElementById('wizard-back-3').addEventListener('click', () => renderWizardStep('preview'));
+    document.getElementById('wizard-next-3').addEventListener('click', async () => {
+      const val = document.getElementById('wizard-assign-select').value;
+      if (!val) { document.getElementById('wizard-assign-error').textContent = 'Choose who these contacts should be assigned to.'; return; }
+      wizardState.assignedTo = val;
+      await computeWizardDuplicates();
+      renderWizardStep('duplicates');
+    });
+  }
+
+  function normalizePhoneDigits(p) { return (p || '').replace(/\D/g, ''); }
+
+  async function computeWizardDuplicates() {
+    const { data: existing } = await client.from('contacts').select('business_name, phone');
+    const existingPhones = new Map();
+    (existing || []).forEach((c) => {
+      const n = normalizePhoneDigits(c.phone);
+      if (n) existingPhones.set(n, c.business_name);
+    });
+
+    const seenInBatch = new Map();
+    wizardState.duplicates = wizardState.contacts.map((c, i) => {
+      const n = normalizePhoneDigits(c.phone);
+      let reason = null;
+      if (existingPhones.has(n)) reason = `Already a contact: ${existingPhones.get(n)}`;
+      else if (seenInBatch.has(n)) reason = `Duplicate of row ${seenInBatch.get(n) + 1} in this file`;
+      else seenInBatch.set(n, i);
+      return reason ? { index: i, reason, skip: true } : null;
+    }).filter(Boolean);
+  }
+
+  function renderDuplicatesStep() {
+    const dups = wizardState.duplicates;
+    const body = document.getElementById('wizard-body');
+    const dupListHtml = dups.length ? `
+      <p class="hint">${dups.length} row(s) share a phone number with an existing contact or another row in this file. Checked rows will be skipped on import, uncheck any you want to add anyway.</p>
+      <div class="wizard-table-wrap">
+        ${dups.map((d) => {
+          const c = wizardState.contacts[d.index];
+          return `<div class="dup-row">
+            <input type="checkbox" class="dup-skip" data-index="${d.index}" checked>
+            <div><strong>${c.business_name}</strong> &middot; ${c.phone}<br><span class="col-sample">${d.reason}</span></div>
+          </div>`;
+        }).join('')}
+      </div>
+    ` : `<p class="hint">No duplicate phone numbers found.</p>`;
+
+    body.innerHTML = `
+      ${dupListHtml}
+      <div class="wizard-actions">
+        <button type="button" class="btn btn--outline" id="wizard-back-4">Back</button>
+        <button type="button" class="btn btn--primary" id="wizard-import-btn">Import Contacts</button>
+      </div>
+      <p class="error-msg" id="wizard-import-error"></p>
+    `;
+    body.querySelectorAll('.dup-skip').forEach((cb) => {
+      cb.addEventListener('change', (e) => {
+        const idx = Number(e.target.dataset.index);
+        const d = wizardState.duplicates.find((x) => x.index === idx);
+        if (d) d.skip = e.target.checked;
+      });
+    });
+    document.getElementById('wizard-back-4').addEventListener('click', () => renderWizardStep('assign'));
+    document.getElementById('wizard-import-btn').addEventListener('click', finalizeWizardImport);
+  }
+
+  async function finalizeWizardImport() {
+    const errEl = document.getElementById('wizard-import-error');
+    const skipIndexes = new Set(wizardState.duplicates.filter((d) => d.skip).map((d) => d.index));
+    const rows = wizardState.contacts
+      .filter((c, i) => !skipIndexes.has(i))
+      .map((c) => ({ ...c, assigned_to: wizardState.assignedTo }));
+
+    if (!rows.length) { errEl.textContent = 'Nothing left to import, everything was skipped as a duplicate.'; return; }
 
     const { error } = await client.from('contacts').insert(rows);
     if (error) { errEl.textContent = error.message; return; }
-    okEl.textContent = `Added ${rows.length} contact(s) from the file.`;
+
+    document.getElementById('wizard-body').innerHTML = `
+      <p class="hint">Imported ${rows.length} contact(s).</p>
+      <div class="wizard-actions">
+        <button type="button" class="btn btn--primary" id="wizard-done-btn">Done</button>
+      </div>
+    `;
+    document.getElementById('wizard-done-btn').addEventListener('click', closeWizard);
     loadContacts();
-  });
+  }
 
   // ---------- DNC ----------
   async function loadDNC() {
