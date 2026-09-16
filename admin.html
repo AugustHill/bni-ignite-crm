@@ -277,6 +277,9 @@
   function contactDisplayName(c) {
     return c.business_name || c.contact_name || '(no name)';
   }
+  function escapeAttr(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  }
 
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -376,18 +379,49 @@
         </td>
         <td><select class="status-select" data-id="${c.id}">${statusOpts(c.status)}</select></td>
         <td style="white-space:nowrap;">
-          <button type="button" class="btn btn--outline btn--sm view-toggle" data-id="${c.id}">View</button>
+          <button type="button" class="btn btn--outline btn--sm view-toggle" data-id="${c.id}">Edit</button>
           ${c.email ? `<a class="btn btn--outline btn--sm" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>` : ''}
           <button type="button" class="btn btn--danger btn--sm delete-contact" data-id="${c.id}" data-name="${contactDisplayName(c)}">Delete</button>
         </td>
       </tr>
       <tr class="detail-row" data-detail="${c.id}" style="display:none;">
         <td colspan="8">
-          <p class="hint" style="margin-top:0;">Added by ${c.creator ? c.creator.full_name : 'Unknown'} on ${new Date(c.created_at).toLocaleString()}</p>
-          ${c.email ? `<p class="hint">Email: <a href="mailto:${c.email}" target="_blank" rel="noopener">${c.email}</a></p>` : ''}
-          ${c.mailing_address ? `<p class="hint">Mailing address: ${c.mailing_address}</p>` : ''}
-          ${c.notes ? `<p class="hint"><strong>Notes:</strong> ${c.notes}</p>` : ''}
-          ${c.additional_info ? `<p class="hint" style="white-space:pre-line;"><strong>Additional info from upload:</strong><br>${c.additional_info}</p>` : ''}
+          <p class="hint" style="margin-top:0;">Added by ${c.creator ? c.creator.full_name : 'Unknown'} on ${new Date(c.created_at).toLocaleString()}. Edits save automatically as you leave each field.</p>
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label>Business Name</label>
+              <input type="text" class="edit-field" data-id="${c.id}" data-field="business_name" value="${escapeAttr(c.business_name)}">
+            </div>
+            <div class="form-group">
+              <label>Contact Name</label>
+              <input type="text" class="edit-field" data-id="${c.id}" data-field="contact_name" value="${escapeAttr(c.contact_name)}">
+            </div>
+            <div class="form-group">
+              <label>Phone</label>
+              <input type="tel" class="edit-field" data-id="${c.id}" data-field="phone" value="${escapeAttr(c.phone)}">
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" class="edit-field" data-id="${c.id}" data-field="email" value="${escapeAttr(c.email)}">
+            </div>
+            <div class="form-group">
+              <label>Industry</label>
+              <input type="text" class="edit-field" data-id="${c.id}" data-field="industry" value="${escapeAttr(c.industry)}">
+            </div>
+            <div class="form-group">
+              <label>Mailing Address</label>
+              <input type="text" class="edit-field" data-id="${c.id}" data-field="mailing_address" value="${escapeAttr(c.mailing_address)}">
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label>Notes</label>
+              <textarea class="edit-field" data-id="${c.id}" data-field="notes" rows="2">${c.notes || ''}</textarea>
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label>Additional Info</label>
+              <textarea class="edit-field" data-id="${c.id}" data-field="additional_info" rows="2">${c.additional_info || ''}</textarea>
+            </div>
+          </div>
+          <p class="error-msg edit-error" data-error="${c.id}"></p>
           <div class="call-history" data-history="${c.id}"><p class="hint">Loading call history…</p></div>
         </td>
       </tr>
@@ -404,12 +438,63 @@
         await client.from('contacts').update({ lead_temperature: e.target.value }).eq('id', e.target.dataset.id);
       });
     });
+
+    // Refreshes just the static display cells for one row (Business, Name,
+    // Phone, Industry, the Email action) from currentContacts, without
+    // rebuilding the whole table -- a full loadContacts() would collapse
+    // the Edit panel the person is actively typing into.
+    function refreshRowDisplay(id) {
+      const c = currentContacts.find((x) => x.id === id);
+      const row = tbody.querySelector(`tr[data-row="${id}"]`);
+      if (!c || !row) return;
+      const cells = row.children;
+      cells[1].innerHTML = `${contactDisplayName(c)}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}`;
+      cells[2].textContent = c.business_name ? (c.contact_name || '') : '';
+      cells[3].innerHTML = `<a href="tel:${c.phone}">${c.phone}</a>`;
+      cells[4].textContent = c.industry || '';
+      row.querySelector('.delete-contact').dataset.name = contactDisplayName(c);
+      const actionsCell = cells[7];
+      const emailLink = actionsCell.querySelector('a[href^="mailto:"]');
+      if (c.email && !emailLink) {
+        actionsCell.querySelector('.delete-contact').insertAdjacentHTML('beforebegin', `<a class="btn btn--outline btn--sm" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>`);
+      } else if (!c.email && emailLink) {
+        emailLink.remove();
+      } else if (c.email && emailLink) {
+        emailLink.href = `mailto:${c.email}`;
+      }
+    }
+
+    tbody.querySelectorAll('.edit-field').forEach((el) => {
+      el.addEventListener('blur', async () => {
+        const id = el.dataset.id;
+        const field = el.dataset.field;
+        const errEl = tbody.querySelector(`.edit-error[data-error="${id}"]`);
+        const c = currentContacts.find((x) => x.id === id);
+        const newVal = el.value.trim();
+        const oldVal = (c && c[field]) || '';
+        if (newVal === oldVal) return;
+
+        if (field === 'phone' && !newVal) {
+          errEl.textContent = 'Phone number cannot be blank.';
+          el.value = oldVal;
+          return;
+        }
+        errEl.textContent = '';
+
+        const { error } = await client.from('contacts').update({ [field]: newVal || null }).eq('id', id);
+        if (error) { errEl.textContent = error.message; return; }
+
+        if (c) c[field] = newVal || null;
+        refreshRowDisplay(id);
+      });
+    });
+
     tbody.querySelectorAll('.view-toggle').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const row = tbody.querySelector(`.detail-row[data-detail="${btn.dataset.id}"]`);
         const showing = row.style.display !== 'none';
         row.style.display = showing ? 'none' : 'table-row';
-        btn.textContent = showing ? 'View' : 'Hide';
+        btn.textContent = showing ? 'Edit' : 'Close';
         if (!showing) {
           const histEl = row.querySelector('.call-history');
           const { data: history, error } = await client
