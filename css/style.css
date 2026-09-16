@@ -143,6 +143,7 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 .badge--status-joined_bni { background: var(--color-primary); color: #fff; }
 .badge--status-not_interested { background: var(--color-bg-alt); color: var(--color-text-muted); }
 .badge--dnc { background: var(--color-danger-bg); color: var(--color-danger); }
+.badge--hot { background: var(--color-danger-bg); color: var(--color-danger); }
 .badge--warm { background: #fde4d2; color: #943c05; }
 .badge--cold { background: #dcebfa; color: #1c5f8c; }
 @media (prefers-color-scheme: dark) {

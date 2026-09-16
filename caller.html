@@ -19,6 +19,8 @@
   .hours-row .form-group { flex: 1; min-width: 120px; margin-bottom: 0; }
   .followup-date { font-size: 0.85rem; margin: 4px 0 0; }
   .followup-date.is-overdue { color: var(--color-danger); font-weight: 700; }
+  .queue-toolbar { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .queue-toolbar .form-group { margin-bottom: 0; min-width: 180px; }
 </style>
 </head>
 <body>
@@ -93,6 +95,7 @@
         <select id="ac-temperature">
           <option value="cold" selected>Cold</option>
           <option value="warm">Warm</option>
+          <option value="hot">Hot</option>
         </select>
       </div>
       <div class="form-group" style="grid-column: 1 / -1;">
@@ -112,6 +115,20 @@
       <button type="button" class="tab-btn" data-tab="followup">Follow-Up Pool</button>
     </div>
     <div class="tab-panel is-active" data-panel="queue">
+      <div class="queue-toolbar">
+        <div class="form-group">
+          <label for="queue-industry-filter">Industry</label>
+          <select id="queue-industry-filter"><option value="">All Industries</option></select>
+        </div>
+        <div class="form-group">
+          <label for="queue-sort">Sort by</label>
+          <select id="queue-sort">
+            <option value="name">Name (A-Z)</option>
+            <option value="temperature">Lead Type (Hot first)</option>
+            <option value="status">Status (Uncontacted first)</option>
+          </select>
+        </div>
+      </div>
       <div id="queue-container"><p class="empty-state">Loading your contacts…</p></div>
     </div>
     <div class="tab-panel" data-panel="followup">
@@ -172,6 +189,9 @@
     visit_scheduled: 'Visit Scheduled', visit_attended: 'Visit Attended',
     joined_bni: 'Joined BNI', not_interested: 'Not Interested',
   };
+  const STATUS_ORDER = ['uncontacted', 'no_answer', 'visit_scheduled', 'visit_attended', 'joined_bni'];
+  const TEMPERATURE_LABELS = { hot: 'Hot', warm: 'Warm', cold: 'Cold' };
+  const TEMPERATURE_ORDER = ['hot', 'warm', 'cold'];
 
   let client, profile;
   const queueContainer = document.getElementById('queue-container');
@@ -240,7 +260,7 @@
             ${c.follow_up_date ? `<p class="followup-date${overdue ? ' is-overdue' : ''}">Follow up: ${c.follow_up_date}${overdue ? ' (overdue)' : ''}</p>` : ''}
           </div>
           <div class="contact-badges">
-            <span class="badge badge--${c.lead_temperature}">${c.lead_temperature === 'warm' ? 'Warm' : 'Cold'}</span>
+            <span class="badge badge--${c.lead_temperature}">${TEMPERATURE_LABELS[c.lead_temperature] || c.lead_temperature}</span>
             <span class="badge badge--status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span>
             ${c.email ? `<a class="btn btn--outline btn--sm" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>` : ''}
             <button type="button" class="btn btn--outline btn--sm edit-toggle">Edit</button>
@@ -414,6 +434,46 @@
     });
   }
 
+  let queueRawData = [];
+
+  function populateIndustryFilter(data) {
+    const sel = document.getElementById('queue-industry-filter');
+    const current = sel.value;
+    const industries = [...new Set(data.map((c) => c.industry).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    sel.innerHTML = '<option value="">All Industries</option>' + industries.map((i) => `<option value="${escapeAttr(i)}">${i}</option>`).join('');
+    if (industries.includes(current)) sel.value = current;
+  }
+
+  function sortContacts(data, mode) {
+    const arr = [...data];
+    if (mode === 'temperature') {
+      arr.sort((a, b) => TEMPERATURE_ORDER.indexOf(a.lead_temperature) - TEMPERATURE_ORDER.indexOf(b.lead_temperature));
+    } else if (mode === 'status') {
+      arr.sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
+    } else {
+      arr.sort((a, b) => (a.business_name || a.contact_name || '').localeCompare(b.business_name || b.contact_name || ''));
+    }
+    return arr;
+  }
+
+  function applyQueueFilterSort() {
+    const industry = document.getElementById('queue-industry-filter').value;
+    const sortMode = document.getElementById('queue-sort').value;
+    let data = queueRawData;
+    if (industry) data = data.filter((c) => c.industry === industry);
+    data = sortContacts(data, sortMode);
+
+    if (!data.length) {
+      queueContainer.innerHTML = '<p class="empty-state">No contacts match that filter.</p>';
+      return;
+    }
+    queueContainer.innerHTML = data.map(contactCardHtml).join('');
+    wireContactCards(queueContainer);
+  }
+
+  document.getElementById('queue-industry-filter').addEventListener('change', applyQueueFilterSort);
+  document.getElementById('queue-sort').addEventListener('change', applyQueueFilterSort);
+
   async function loadQueue() {
     const { data, error } = await client
       .from('contacts')
@@ -427,14 +487,16 @@
       queueContainer.innerHTML = `<p class="empty-state">Couldn't load your queue: ${error.message}</p>`;
       return;
     }
-    if (!data.length) {
+
+    queueRawData = data || [];
+    queueRawData.forEach((c) => contactsById.set(c.id, c));
+    populateIndustryFilter(queueRawData);
+
+    if (!queueRawData.length) {
       queueContainer.innerHTML = '<p class="empty-state">Nothing in your queue right now. Check back once new contacts are added.</p>';
       return;
     }
-
-    data.forEach((c) => contactsById.set(c.id, c));
-    queueContainer.innerHTML = data.map(contactCardHtml).join('');
-    wireContactCards(queueContainer);
+    applyQueueFilterSort();
   }
 
   async function loadFollowUpPool() {

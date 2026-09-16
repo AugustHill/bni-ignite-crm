@@ -113,6 +113,7 @@
           <select id="c-temperature">
             <option value="cold" selected>Cold</option>
             <option value="warm">Warm</option>
+            <option value="hot">Hot</option>
           </select>
         </div>
         <div class="form-group">
@@ -375,6 +376,7 @@
           <select class="temperature-select" data-id="${c.id}">
             <option value="cold" ${c.lead_temperature === 'cold' ? 'selected' : ''}>Cold</option>
             <option value="warm" ${c.lead_temperature === 'warm' ? 'selected' : ''}>Warm</option>
+            <option value="hot" ${c.lead_temperature === 'hot' ? 'selected' : ''}>Hot</option>
           </select>
         </td>
         <td><select class="status-select" data-id="${c.id}">${statusOpts(c.status)}</select></td>

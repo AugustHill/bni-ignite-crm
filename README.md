@@ -139,6 +139,10 @@ database, neither touches existing data beyond tagging ownership:
   logged call (including back to null if the latest call didn't set one).
   Powers the Follow-Up Pool tab in caller.html, which queries it directly
   instead of hunting through call_logs for the latest row per contact.
+- `supabase/migration_015_hot_lead_and_queue_sort.sql` — adds "hot" as a
+  third lead-temperature tier alongside warm/cold. The Industry filter and
+  Sort by (name/lead type/status) controls on the caller's queue are
+  client-side only, no schema change needed for those.
 
 ## How the pieces fit together
 
@@ -161,6 +165,9 @@ database, neither touches existing data beyond tagging ownership:
   date set (from logging a call with one), soonest due first, overdue
   ones marked -- a focused list instead of scanning the whole queue. A
   contact can appear in both tabs at once and stays in sync either way.
+  Your Queue also has an Industry filter and a Sort by control (name,
+  lead type hot/warm/cold, or status), both client-side over whatever
+  she's already loaded, no extra fetch per change.
 - **`admin.html`** — Dashboard (calling funnel + progress toward the
   35-member goal), Contacts (add one at a time, paste many at once, or
   upload a CSV file through the import wizard), DNC List, Hours & Pay
