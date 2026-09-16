@@ -13,8 +13,8 @@
   .contact-meta { font-size: 0.85rem; color: var(--color-text-muted); margin: 0; }
   .contact-meta a { color: var(--color-primary); font-weight: 600; text-decoration: none; }
   .contact-badges { display: flex; gap: 6px; align-items: center; }
-  .log-form { display: none; margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--color-border); }
-  .log-form.is-open { display: block; }
+  .log-form, .edit-form { display: none; margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--color-border); }
+  .log-form.is-open, .edit-form.is-open { display: block; }
   .hours-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
   .hours-row .form-group { flex: 1; min-width: 120px; margin-bottom: 0; }
 </style>
@@ -162,9 +162,13 @@
     joined_bni: 'Joined BNI', not_interested: 'Not Interested',
   };
 
-  let client, profile;
+  let client, profile, queueContacts = [];
   const queueContainer = document.getElementById('queue-container');
   const hoursTbody = document.getElementById('hours-tbody');
+
+  function escapeAttr(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  }
 
   function startOfWeek() {
     const d = new Date();
@@ -227,6 +231,8 @@
       return;
     }
 
+    queueContacts = data;
+
     queueContainer.innerHTML = data.map((c) => `
       <div class="contact-card" data-id="${c.id}">
         <div class="contact-card-top">
@@ -238,10 +244,48 @@
             <span class="badge badge--${c.lead_temperature}">${c.lead_temperature === 'warm' ? 'Warm' : 'Cold'}</span>
             <span class="badge badge--status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span>
             ${c.email ? `<a class="btn btn--outline btn--sm" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>` : ''}
+            <button type="button" class="btn btn--outline btn--sm edit-toggle">Edit</button>
             <button type="button" class="btn btn--accent btn--sm log-toggle">Log a call</button>
           </div>
         </div>
         ${c.notes ? `<p class="hint">Notes: ${c.notes}</p>` : ''}
+        <div class="edit-form">
+          <div class="grid grid-2">
+            <div class="form-group">
+              <label>Business Name</label>
+              <input type="text" class="edit-field" data-id="${c.id}" data-field="business_name" value="${escapeAttr(c.business_name)}">
+            </div>
+            <div class="form-group">
+              <label>Contact Name</label>
+              <input type="text" class="edit-field" data-id="${c.id}" data-field="contact_name" value="${escapeAttr(c.contact_name)}">
+            </div>
+            <div class="form-group">
+              <label>Phone</label>
+              <input type="tel" class="edit-field" data-id="${c.id}" data-field="phone" value="${escapeAttr(c.phone)}">
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" class="edit-field" data-id="${c.id}" data-field="email" value="${escapeAttr(c.email)}">
+            </div>
+            <div class="form-group">
+              <label>Industry</label>
+              <input type="text" class="edit-field" data-id="${c.id}" data-field="industry" value="${escapeAttr(c.industry)}">
+            </div>
+            <div class="form-group">
+              <label>Mailing Address</label>
+              <input type="text" class="edit-field" data-id="${c.id}" data-field="mailing_address" value="${escapeAttr(c.mailing_address)}">
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label>Notes</label>
+              <textarea class="edit-field" data-id="${c.id}" data-field="notes" rows="2">${c.notes || ''}</textarea>
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label>Additional Info</label>
+              <textarea class="edit-field" data-id="${c.id}" data-field="additional_info" rows="2">${c.additional_info || ''}</textarea>
+            </div>
+          </div>
+          <p class="error-msg edit-error" data-error="${c.id}"></p>
+        </div>
         <form class="log-form">
           <div class="form-group">
             <label>Outcome</label>
@@ -271,6 +315,57 @@
     queueContainer.querySelectorAll('.log-toggle').forEach((btn) => {
       btn.addEventListener('click', () => {
         btn.closest('.contact-card').querySelector('.log-form').classList.toggle('is-open');
+      });
+    });
+
+    queueContainer.querySelectorAll('.edit-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        btn.closest('.contact-card').querySelector('.edit-form').classList.toggle('is-open');
+      });
+    });
+
+    // Refreshes just the card header (name, meta line, Email action) from
+    // queueContacts after a field save, without reloading the whole queue
+    // -- a full reload would collapse the edit panel mid-edit.
+    function refreshCardDisplay(id) {
+      const c = queueContacts.find((x) => x.id === id);
+      const card = queueContainer.querySelector(`.contact-card[data-id="${id}"]`);
+      if (!c || !card) return;
+      card.querySelector('h3').textContent = c.business_name || c.contact_name || '(no name)';
+      card.querySelector('.contact-meta').innerHTML = `${c.business_name && c.contact_name ? c.contact_name + ' · ' : ''}<a href="tel:${c.phone}">${c.phone}</a>${c.industry ? ' · ' + c.industry : ''}`;
+      const badges = card.querySelector('.contact-badges');
+      const emailLink = badges.querySelector('a[href^="mailto:"]');
+      if (c.email && !emailLink) {
+        badges.querySelector('.edit-toggle').insertAdjacentHTML('beforebegin', `<a class="btn btn--outline btn--sm" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>`);
+      } else if (!c.email && emailLink) {
+        emailLink.remove();
+      } else if (c.email && emailLink) {
+        emailLink.href = `mailto:${c.email}`;
+      }
+    }
+
+    queueContainer.querySelectorAll('.edit-field').forEach((el) => {
+      el.addEventListener('blur', async () => {
+        const id = el.dataset.id;
+        const field = el.dataset.field;
+        const errEl = queueContainer.querySelector(`.edit-error[data-error="${id}"]`);
+        const c = queueContacts.find((x) => x.id === id);
+        const newVal = el.value.trim();
+        const oldVal = (c && c[field]) || '';
+        if (newVal === oldVal) return;
+
+        if (field === 'phone' && !newVal) {
+          errEl.textContent = 'Phone number cannot be blank.';
+          el.value = oldVal;
+          return;
+        }
+        errEl.textContent = '';
+
+        const { error } = await client.from('contacts').update({ [field]: newVal || null }).eq('id', id);
+        if (error) { errEl.textContent = error.message; return; }
+
+        if (c) c[field] = newVal || null;
+        refreshCardDisplay(id);
       });
     });
 

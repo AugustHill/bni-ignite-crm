@@ -123,6 +123,17 @@ database, neither touches existing data beyond tagging ownership:
   and `additional_info` to contacts, both freeform text. Powers the CSV
   import wizard's Mailing Address and Additional Info column targets, and
   show up on a contact's expanded "View" row when present.
+- `supabase/migration_012_business_name_optional.sql` — drops the
+  `not null` constraint on `contacts.business_name`. Some uploaded files
+  are personal contacts with no business attached; phone number is now
+  the only field every contact is guaranteed to have.
+- `supabase/migration_013_caller_edit_contacts.sql` — adds an update
+  policy so a caller can edit her own assigned contacts' info fields
+  (business name, phone, email, industry, mailing address, notes) from
+  caller.html, the same fields the coordinator can already edit from
+  admin.html. She previously had select and insert only, no update at
+  all; the policy's "with check" stops her from reassigning a contact
+  to someone else through it, and she still has no delete policy.
 
 ## How the pieces fit together
 
@@ -136,7 +147,11 @@ database, neither touches existing data beyond tagging ownership:
   (outcome, notes, optional follow-up date), her self-reported hours, and a
   link to her own GPS plan. Logging an outcome of "asked not to be called
   again" flags that contact DNC automatically and it drops out of her queue
-  from then on — reversible only from your DNC tab, not from her side.
+  from then on — reversible only from your DNC tab, not from her side. An
+  Edit button on each contact card lets her correct its info fields
+  (business name, phone, email, industry, mailing address, notes), saving
+  automatically as she leaves each field. She can't reassign a contact to
+  someone else or delete one, only edit the ones already assigned to her.
 - **`admin.html`** — Dashboard (calling funnel + progress toward the
   35-member goal), Contacts (add one at a time, paste many at once, or
   upload a CSV file through the import wizard), DNC List, Hours & Pay

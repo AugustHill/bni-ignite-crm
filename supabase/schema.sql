@@ -107,6 +107,16 @@ create policy "caller adds contacts assigned to herself"
   to authenticated
   with check (assigned_to = auth.uid());
 
+-- The "with check" here is what stops a caller from reassigning a contact
+-- to someone else via this policy -- after her update, the row still has
+-- to belong to her or the write is rejected. She has no delete policy on
+-- contacts at all, that stays coordinator-only.
+create policy "caller updates her assigned contacts"
+  on contacts for update
+  to authenticated
+  using (assigned_to = auth.uid())
+  with check (assigned_to = auth.uid());
+
 -- ============================================================================
 -- call_logs: one row per call attempt. This is the caller's real write
 -- surface -- she logs outcomes here rather than editing contacts directly,
