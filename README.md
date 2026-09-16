@@ -134,6 +134,11 @@ database, neither touches existing data beyond tagging ownership:
   admin.html. She previously had select and insert only, no update at
   all; the policy's "with check" stops her from reassigning a contact
   to someone else through it, and she still has no delete policy.
+- `supabase/migration_014_follow_up_pool.sql` — adds `contacts.follow_up_date`
+  and updates `apply_call_outcome()` to keep it synced from the latest
+  logged call (including back to null if the latest call didn't set one).
+  Powers the Follow-Up Pool tab in caller.html, which queries it directly
+  instead of hunting through call_logs for the latest row per contact.
 
 ## How the pieces fit together
 
@@ -152,6 +157,10 @@ database, neither touches existing data beyond tagging ownership:
   (business name, phone, email, industry, mailing address, notes), saving
   automatically as she leaves each field. She can't reassign a contact to
   someone else or delete one, only edit the ones already assigned to her.
+  A second tab, Follow-Up Pool, lists just the contacts with a follow-up
+  date set (from logging a call with one), soonest due first, overdue
+  ones marked -- a focused list instead of scanning the whole queue. A
+  contact can appear in both tabs at once and stays in sync either way.
 - **`admin.html`** — Dashboard (calling funnel + progress toward the
   35-member goal), Contacts (add one at a time, paste many at once, or
   upload a CSV file through the import wizard), DNC List, Hours & Pay

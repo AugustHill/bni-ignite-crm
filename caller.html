@@ -17,6 +17,8 @@
   .log-form.is-open, .edit-form.is-open { display: block; }
   .hours-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
   .hours-row .form-group { flex: 1; min-width: 120px; margin-bottom: 0; }
+  .followup-date { font-size: 0.85rem; margin: 4px 0 0; }
+  .followup-date.is-overdue { color: var(--color-danger); font-weight: 700; }
 </style>
 </head>
 <body>
@@ -105,8 +107,17 @@
   </div>
 
   <div class="card">
-    <h2>Your Queue</h2>
-    <div id="queue-container"><p class="empty-state">Loading your contacts…</p></div>
+    <div class="tabs">
+      <button type="button" class="tab-btn is-active" data-tab="queue">Your Queue</button>
+      <button type="button" class="tab-btn" data-tab="followup">Follow-Up Pool</button>
+    </div>
+    <div class="tab-panel is-active" data-panel="queue">
+      <div id="queue-container"><p class="empty-state">Loading your contacts…</p></div>
+    </div>
+    <div class="tab-panel" data-panel="followup">
+      <p class="hint" style="margin-top:0;">Anyone with a follow-up date set from a logged call, soonest due first. Overdue ones are marked.</p>
+      <div id="followup-container"><p class="empty-state">Loading…</p></div>
+    </div>
   </div>
 
   <div class="card">
@@ -162,7 +173,7 @@
     joined_bni: 'Joined BNI', not_interested: 'Not Interested',
   };
 
-  let client, profile, queueContacts = [];
+  let client, profile;
   const queueContainer = document.getElementById('queue-container');
   const hoursTbody = document.getElementById('hours-tbody');
 
@@ -213,32 +224,20 @@
     document.getElementById('stat-conversations').textContent = conv_n;
   }
 
-  async function loadQueue() {
-    const { data, error } = await client
-      .from('contacts')
-      .select('*')
-      .eq('assigned_to', profile.id)
-      .eq('dnc', false)
-      .not('status', 'in', '(joined_bni,not_interested)')
-      .order('created_at', { ascending: true });
+  // Shared by both "Your Queue" and "Follow-Up Pool" -- a contact can
+  // appear in either or both, so edits made from one place stay correct if
+  // the same contact is also showing in the other.
+  let contactsById = new Map();
 
-    if (error) {
-      queueContainer.innerHTML = `<p class="empty-state">Couldn't load your queue: ${error.message}</p>`;
-      return;
-    }
-    if (!data.length) {
-      queueContainer.innerHTML = '<p class="empty-state">Nothing in your queue right now. Check back once new contacts are added.</p>';
-      return;
-    }
-
-    queueContacts = data;
-
-    queueContainer.innerHTML = data.map((c) => `
+  function contactCardHtml(c) {
+    const overdue = c.follow_up_date && c.follow_up_date < new Date().toISOString().slice(0, 10);
+    return `
       <div class="contact-card" data-id="${c.id}">
         <div class="contact-card-top">
           <div>
             <h3>${c.business_name || c.contact_name || '(no name)'}</h3>
             <p class="contact-meta">${c.business_name && c.contact_name ? c.contact_name + ' · ' : ''}<a href="tel:${c.phone}">${c.phone}</a>${c.industry ? ' · ' + c.industry : ''}</p>
+            ${c.follow_up_date ? `<p class="followup-date${overdue ? ' is-overdue' : ''}">Follow up: ${c.follow_up_date}${overdue ? ' (overdue)' : ''}</p>` : ''}
           </div>
           <div class="contact-badges">
             <span class="badge badge--${c.lead_temperature}">${c.lead_temperature === 'warm' ? 'Warm' : 'Cold'}</span>
@@ -304,33 +303,23 @@
           </div>
           <div class="form-group">
             <label>Follow-up date (optional)</label>
-            <input type="date" class="log-followup">
+            <input type="date" class="log-followup" value="${c.follow_up_date || ''}">
           </div>
           <button type="submit" class="btn btn--primary btn--sm">Save Call</button>
           <p class="error-msg log-error"></p>
         </form>
       </div>
-    `).join('');
+    `;
+  }
 
-    queueContainer.querySelectorAll('.log-toggle').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        btn.closest('.contact-card').querySelector('.log-form').classList.toggle('is-open');
-      });
-    });
-
-    queueContainer.querySelectorAll('.edit-toggle').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        btn.closest('.contact-card').querySelector('.edit-form').classList.toggle('is-open');
-      });
-    });
-
-    // Refreshes just the card header (name, meta line, Email action) from
-    // queueContacts after a field save, without reloading the whole queue
-    // -- a full reload would collapse the edit panel mid-edit.
-    function refreshCardDisplay(id) {
-      const c = queueContacts.find((x) => x.id === id);
-      const card = queueContainer.querySelector(`.contact-card[data-id="${id}"]`);
-      if (!c || !card) return;
+  // Refreshes a card's display wherever it currently appears (it can be in
+  // both the queue and the follow-up pool at once) from contactsById,
+  // without reloading either list -- a reload would collapse whichever
+  // panel the person is actively working in.
+  function refreshCardDisplay(id) {
+    const c = contactsById.get(id);
+    document.querySelectorAll(`.contact-card[data-id="${id}"]`).forEach((card) => {
+      if (!c) return;
       card.querySelector('h3').textContent = c.business_name || c.contact_name || '(no name)';
       card.querySelector('.contact-meta').innerHTML = `${c.business_name && c.contact_name ? c.contact_name + ' · ' : ''}<a href="tel:${c.phone}">${c.phone}</a>${c.industry ? ' · ' + c.industry : ''}`;
       const badges = card.querySelector('.contact-badges');
@@ -342,14 +331,31 @@
       } else if (c.email && emailLink) {
         emailLink.href = `mailto:${c.email}`;
       }
-    }
+    });
+  }
 
-    queueContainer.querySelectorAll('.edit-field').forEach((el) => {
+  // Wires up every interactive bit inside one rendered list of cards
+  // (queue or follow-up pool). Called once per container after its
+  // innerHTML is set.
+  function wireContactCards(container) {
+    container.querySelectorAll('.log-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        btn.closest('.contact-card').querySelector('.log-form').classList.toggle('is-open');
+      });
+    });
+
+    container.querySelectorAll('.edit-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        btn.closest('.contact-card').querySelector('.edit-form').classList.toggle('is-open');
+      });
+    });
+
+    container.querySelectorAll('.edit-field').forEach((el) => {
       el.addEventListener('blur', async () => {
         const id = el.dataset.id;
         const field = el.dataset.field;
-        const errEl = queueContainer.querySelector(`.edit-error[data-error="${id}"]`);
-        const c = queueContacts.find((x) => x.id === id);
+        const errEl = container.querySelector(`.edit-error[data-error="${id}"]`);
+        const c = contactsById.get(id);
         const newVal = el.value.trim();
         const oldVal = (c && c[field]) || '';
         if (newVal === oldVal) return;
@@ -369,14 +375,14 @@
       });
     });
 
-    queueContainer.querySelectorAll('.log-outcome').forEach((select) => {
+    container.querySelectorAll('.log-outcome').forEach((select) => {
       select.addEventListener('change', (e) => {
         const reminder = e.target.closest('form').querySelector('.log-visitor-reminder');
         reminder.style.display = e.target.value === 'accepted_invitation' ? 'flex' : 'none';
       });
     });
 
-    queueContainer.querySelectorAll('.log-form').forEach((form) => {
+    container.querySelectorAll('.log-form').forEach((form) => {
       form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const card = form.closest('.contact-card');
@@ -399,10 +405,61 @@
           errEl.textContent = error.message;
           return;
         }
+        // The outcome can change status/dnc/follow_up_date enough to move
+        // a contact into or out of either list, so refresh both.
         loadQueue();
+        loadFollowUpPool();
         loadStats();
       });
     });
+  }
+
+  async function loadQueue() {
+    const { data, error } = await client
+      .from('contacts')
+      .select('*')
+      .eq('assigned_to', profile.id)
+      .eq('dnc', false)
+      .not('status', 'in', '(joined_bni,not_interested)')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      queueContainer.innerHTML = `<p class="empty-state">Couldn't load your queue: ${error.message}</p>`;
+      return;
+    }
+    if (!data.length) {
+      queueContainer.innerHTML = '<p class="empty-state">Nothing in your queue right now. Check back once new contacts are added.</p>';
+      return;
+    }
+
+    data.forEach((c) => contactsById.set(c.id, c));
+    queueContainer.innerHTML = data.map(contactCardHtml).join('');
+    wireContactCards(queueContainer);
+  }
+
+  async function loadFollowUpPool() {
+    const followupContainer = document.getElementById('followup-container');
+    const { data, error } = await client
+      .from('contacts')
+      .select('*')
+      .eq('assigned_to', profile.id)
+      .eq('dnc', false)
+      .not('status', 'in', '(joined_bni,not_interested)')
+      .not('follow_up_date', 'is', null)
+      .order('follow_up_date', { ascending: true });
+
+    if (error) {
+      followupContainer.innerHTML = `<p class="empty-state">Couldn't load your follow-up pool: ${error.message}</p>`;
+      return;
+    }
+    if (!data.length) {
+      followupContainer.innerHTML = '<p class="empty-state">No follow-ups scheduled right now. Setting a follow-up date when you log a call adds it here.</p>';
+      return;
+    }
+
+    data.forEach((c) => contactsById.set(c.id, c));
+    followupContainer.innerHTML = data.map(contactCardHtml).join('');
+    wireContactCards(followupContainer);
   }
 
   async function loadHours() {
@@ -490,6 +547,15 @@
 
   document.getElementById('logout-btn').addEventListener('click', logout);
 
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('is-active'));
+      document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('is-active'));
+      btn.classList.add('is-active');
+      document.querySelector(`.tab-panel[data-panel="${btn.dataset.tab}"]`).classList.add('is-active');
+    });
+  });
+
   (async () => {
     try {
       const result = await requireRole('caller');
@@ -499,6 +565,7 @@
       initPresence(client, profile);
       document.getElementById('hours-date').valueAsDate = new Date();
       loadQueue();
+      loadFollowUpPool();
       loadStats();
       loadHours();
     } catch (err) {

@@ -79,6 +79,7 @@ create table if not exists contacts (
     'uncontacted', 'no_answer', 'not_interested', 'visit_scheduled',
     'visit_attended', 'joined_bni'
   )),
+  follow_up_date date,
   dnc boolean not null default false,
   dnc_reason text,
   dnc_at timestamptz,
@@ -167,7 +168,11 @@ create policy "caller logs calls for her assigned contacts"
 -- status purposes -- the granular outcome is still preserved per-call here
 -- in call_logs, this just means the aggregate status doesn't have a
 -- dedicated bucket for "talked to them, nothing scheduled yet" since
--- Derrick's status list doesn't include one.
+-- Derrick's status list doesn't include one. contacts.follow_up_date always
+-- mirrors the most recently logged call's follow_up_date (including back
+-- to null if the latest call didn't set one), so the Follow-Up Pool tab can
+-- query it directly instead of hunting through call_logs for the latest
+-- row per contact.
 create or replace function apply_call_outcome()
 returns trigger
 language plpgsql
@@ -183,6 +188,7 @@ begin
       when 'accepted_invitation' then 'visit_scheduled'
       else case when status = 'uncontacted' then 'no_answer' else status end
     end,
+    follow_up_date = new.follow_up_date,
     dnc = case when new.outcome = 'dnc_requested' then true else dnc end,
     dnc_reason = case when new.outcome = 'dnc_requested'
       then coalesce(new.notes, 'Asked not to be called again') else dnc_reason end,
