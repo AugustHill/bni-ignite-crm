@@ -157,6 +157,12 @@ database, neither touches existing data beyond tagging ownership:
   delete policy at all. Powers the new Activity tab in admin.html
   (filtered to the caller's actions specifically) and will power the
   planned digest email.
+- `supabase/migration_018_phone_format.sql` — reformats every existing
+  contact's phone number to xxx-xxx-xxxx (stripping a leading "1" country
+  code if present). Anything that doesn't reduce to exactly 10 digits is
+  left untouched rather than forced into a shape that might be wrong.
+  Going forward, `formatPhone()` in `js/session.js` does the same on
+  every write: both add-contact forms, inline edits, CSV import/paste.
 
 ## How the pieces fit together
 

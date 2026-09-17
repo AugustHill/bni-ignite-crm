@@ -60,6 +60,18 @@ async function logout() {
   window.location.href = 'index.html';
 }
 
+// Normalizes a US phone number to xxx-xxx-xxxx. Strips a leading "1"
+// country code if present. Anything that doesn't reduce to exactly 10
+// digits (an extension, a foreign number, a partial entry) is left
+// exactly as typed rather than forced into a shape that might be wrong.
+function formatPhone(raw) {
+  const digits = (raw || '').replace(/\D/g, '');
+  let d = digits;
+  if (d.length === 11 && d.startsWith('1')) d = d.slice(1);
+  if (d.length === 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  return (raw || '').trim();
+}
+
 // Records a meaningful action for the admin-side activity log (contact
 // added/edited/deleted, a call logged, the Email link clicked). Not part
 // of the actual workflow those actions belong to, so a failure here is

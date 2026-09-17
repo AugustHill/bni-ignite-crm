@@ -555,6 +555,7 @@
         const c = currentContacts.find((x) => x.id === id);
         let newVal = el.value.trim();
         if (field === 'industry') { newVal = titleCase(newVal); el.value = newVal; }
+        if (field === 'phone') { newVal = formatPhone(newVal); el.value = newVal; }
         const oldVal = (c && c[field]) || '';
         if (newVal === oldVal) return;
 
@@ -686,7 +687,7 @@
     const { data: inserted, error } = await client.from('contacts').insert({
       business_name: document.getElementById('c-business').value.trim() || null,
       contact_name: document.getElementById('c-contact-name').value.trim() || null,
-      phone: document.getElementById('c-phone').value.trim(),
+      phone: formatPhone(document.getElementById('c-phone').value),
       email: document.getElementById('c-email').value.trim() || null,
       industry: titleCase(document.getElementById('c-industry').value) || null,
       lead_temperature: document.getElementById('c-temperature').value,
@@ -735,7 +736,7 @@
       return {
         business_name: get('business_name') || null,
         contact_name: contactName || null,
-        phone: get('phone'),
+        phone: formatPhone(get('phone')),
         industry: titleCase(get('industry')) || null,
         email: get('email') || null,
         assigned_to: assigned,
@@ -746,7 +747,7 @@
     return {
       business_name: cells[0] || null,
       contact_name: cells[1] || null,
-      phone: cells[2] || '',
+      phone: formatPhone(cells[2]),
       industry: titleCase(cells[3]) || null,
       email: cells[4] || null,
       assigned_to: assigned,
@@ -996,7 +997,7 @@
       return {
         business_name: get(businessCol) || null,
         contact_name: contactName || null,
-        phone: get(phoneCol),
+        phone: formatPhone(get(phoneCol)),
         email: get(emailCol) || null,
         industry: titleCase(get(industryCol)) || null,
         mailing_address: mailingAddress || null,
