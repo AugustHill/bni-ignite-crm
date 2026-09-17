@@ -583,26 +583,7 @@
         const showing = row.style.display !== 'none';
         row.style.display = showing ? 'none' : 'table-row';
         btn.textContent = showing ? 'Edit' : 'Close';
-        if (!showing) {
-          const histEl = row.querySelector('.call-history');
-          const { data: history, error } = await client
-            .from('call_logs').select('*').eq('contact_id', btn.dataset.id)
-            .order('called_at', { ascending: false });
-          if (error) {
-            histEl.innerHTML = `<p class="hint">Couldn't load history: ${error.message}</p>`;
-          } else if (!history.length) {
-            histEl.innerHTML = '<p class="hint">No calls logged yet.</p>';
-          } else {
-            histEl.innerHTML = history.map((h) => `
-              <div class="call-history-item">
-                <div class="when">${new Date(h.called_at).toLocaleString()}</div>
-                <strong>${OUTCOME_LABELS[h.outcome] || h.outcome}</strong>
-                ${h.notes ? `<div>${h.notes}</div>` : ''}
-                ${h.follow_up_date ? `<div class="hint">Follow up: ${h.follow_up_date}</div>` : ''}
-              </div>
-            `).join('');
-          }
-        }
+        if (!showing) loadCallHistory(btn.dataset.id, row.querySelector('.call-history'));
       });
     });
 
@@ -619,6 +600,115 @@
     updateSelectedCount();
     tbody.querySelectorAll('.contact-select').forEach((cb) => {
       cb.addEventListener('change', updateSelectedCount);
+    });
+  }
+
+  function toLocalDatetimeValue(isoString) {
+    const d = new Date(isoString);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  // Call history is read-only for a caller (caller.html), but a
+  // coordinator can edit or delete an entry here -- for correcting a
+  // mistake or clearing out test data logged while building this. Neither
+  // action re-runs the call-outcome trigger (that only fires on insert),
+  // so it won't retroactively change the contact's current Status if that
+  // needs correcting too -- that's a separate, direct edit on the Status
+  // dropdown.
+  async function loadCallHistory(contactId, histEl) {
+    const { data: history, error } = await client
+      .from('call_logs').select('*').eq('contact_id', contactId)
+      .order('called_at', { ascending: false });
+    if (error) {
+      histEl.innerHTML = `<p class="hint">Couldn't load history: ${error.message}</p>`;
+      return;
+    }
+    if (!history.length) {
+      histEl.innerHTML = '<p class="hint">No calls logged yet.</p>';
+      return;
+    }
+
+    const outcomeOpts = (selected) => Object.entries(OUTCOME_LABELS).map(([v, l]) => `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('');
+
+    histEl.innerHTML = history.map((h) => `
+      <div class="call-history-item" data-log-id="${h.id}">
+        <div class="chi-display">
+          <div class="when">${new Date(h.called_at).toLocaleString()}</div>
+          <strong>${OUTCOME_LABELS[h.outcome] || h.outcome}</strong>
+          ${h.notes ? `<div>${h.notes}</div>` : ''}
+          ${h.follow_up_date ? `<div class="hint">Follow up: ${h.follow_up_date}</div>` : ''}
+          <div style="margin-top:4px;">
+            <button type="button" class="btn btn--outline btn--sm chi-edit-toggle">Edit</button>
+            <button type="button" class="btn btn--danger btn--sm chi-delete">Delete</button>
+          </div>
+        </div>
+        <div class="chi-edit-form" style="display:none;">
+          <div class="form-group">
+            <label>When</label>
+            <input type="datetime-local" class="chi-when" value="${toLocalDatetimeValue(h.called_at)}">
+          </div>
+          <div class="form-group">
+            <label>Outcome</label>
+            <select class="chi-outcome">${outcomeOpts(h.outcome)}</select>
+          </div>
+          <div class="form-group">
+            <label>Notes</label>
+            <textarea class="chi-notes" rows="2">${h.notes || ''}</textarea>
+          </div>
+          <div class="form-group">
+            <label>Follow-up date</label>
+            <input type="date" class="chi-followup" value="${h.follow_up_date || ''}">
+          </div>
+          <button type="button" class="btn btn--primary btn--sm chi-save">Save</button>
+          <button type="button" class="btn btn--outline btn--sm chi-cancel">Cancel</button>
+          <p class="error-msg chi-error"></p>
+        </div>
+      </div>
+    `).join('');
+
+    histEl.querySelectorAll('.chi-edit-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const item = btn.closest('.call-history-item');
+        item.querySelector('.chi-display').style.display = 'none';
+        item.querySelector('.chi-edit-form').style.display = 'block';
+      });
+    });
+    histEl.querySelectorAll('.chi-cancel').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const item = btn.closest('.call-history-item');
+        item.querySelector('.chi-edit-form').style.display = 'none';
+        item.querySelector('.chi-display').style.display = 'block';
+      });
+    });
+    histEl.querySelectorAll('.chi-save').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const item = btn.closest('.call-history-item');
+        const logId = item.dataset.logId;
+        const errEl = item.querySelector('.chi-error');
+        const whenVal = item.querySelector('.chi-when').value;
+        if (!whenVal) { errEl.textContent = 'Set when this call happened.'; return; }
+        errEl.textContent = '';
+
+        const { error: saveError } = await client.from('call_logs').update({
+          called_at: new Date(whenVal).toISOString(),
+          outcome: item.querySelector('.chi-outcome').value,
+          notes: item.querySelector('.chi-notes').value.trim() || null,
+          follow_up_date: item.querySelector('.chi-followup').value || null,
+        }).eq('id', logId);
+        if (saveError) { errEl.textContent = saveError.message; return; }
+        loadCallHistory(contactId, histEl);
+      });
+    });
+    histEl.querySelectorAll('.chi-delete').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Delete this call log entry? This can\'t be undone.')) return;
+        const item = btn.closest('.call-history-item');
+        const { error: delError } = await client.from('call_logs').delete().eq('id', item.dataset.logId);
+        if (delError) { alert(delError.message); return; }
+        loadCallHistory(contactId, histEl);
+        loadDashboard();
+      });
     });
   }
 

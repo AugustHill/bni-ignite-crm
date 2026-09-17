@@ -160,6 +160,21 @@ create policy "caller logs calls for her assigned contacts"
     )
   );
 
+-- Lets a coordinator correct or remove a call log entry (mistakes, test
+-- data from building this). Only fires on insert, so editing or deleting
+-- one doesn't retroactively change the contact's current status -- that's
+-- a separate, direct edit on the Status dropdown if it also needs fixing.
+create policy "coordinator updates call logs"
+  on call_logs for update
+  to authenticated
+  using (is_coordinator())
+  with check (is_coordinator());
+
+create policy "coordinator deletes call logs"
+  on call_logs for delete
+  to authenticated
+  using (is_coordinator());
+
 -- Applies a logged call's outcome to its parent contact: advances status,
 -- and -- this is the DNC enforcement Derrick asked for -- the instant
 -- "dnc_requested" is logged, the contact is flagged and drops out of the

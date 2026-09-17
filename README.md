@@ -163,6 +163,13 @@ database, neither touches existing data beyond tagging ownership:
   left untouched rather than forced into a shape that might be wrong.
   Going forward, `formatPhone()` in `js/session.js` does the same on
   every write: both add-contact forms, inline edits, CSV import/paste.
+- `supabase/migration_019_coordinator_edit_call_logs.sql` — adds update
+  and delete policies so a coordinator can correct or remove a call_logs
+  entry (there was no update or delete policy on that table at all
+  before this, for anyone). The call-outcome trigger only runs on insert,
+  so editing or deleting an entry does not touch the contact's current
+  status. Fixing the status too, if needed, is a separate direct edit on
+  its dropdown.
 
 ## How the pieces fit together
 
@@ -205,7 +212,9 @@ database, neither touches existing data beyond tagging ownership:
   **Activity**, a rolling log of what the caller has done (contacts
   added/edited, calls logged, Email links clicked), most recent first.
   The owner sees an extra **Private** button in the header that no one
-  else gets.
+  else gets. A contact's call history (in its Edit panel) is editable
+  and deletable from here too, for fixing a mistake or clearing out test
+  data, each entry has its own Edit/Delete.
   - The CSV import wizard reads your file's header row and shows a
     dropdown next to each column (Business Name, Contact Name, First/Last
     Name, Phone Number, Email, Industry, Mailing Address, Additional Info,
