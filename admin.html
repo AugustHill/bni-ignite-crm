@@ -63,6 +63,7 @@
     <button class="tab-btn" data-tab="dnc">DNC List</button>
     <button class="tab-btn" data-tab="hours">Hours &amp; Pay</button>
     <button class="tab-btn" data-tab="team">Team</button>
+    <button class="tab-btn" data-tab="activity">Activity</button>
   </div>
 
   <div class="tab-panel is-active" data-panel="dashboard">
@@ -243,6 +244,19 @@
       </div>
     </div>
   </div>
+
+  <div class="tab-panel" data-panel="activity">
+    <div class="card">
+      <h2>Caller Activity</h2>
+      <p class="hint" style="margin-top:-6px;">A rolling log of what the caller has done: contacts added or edited, calls logged, Email links clicked. Most recent first, last 200 shown.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Contact</th><th>Details</th></tr></thead>
+          <tbody id="activity-tbody"><tr><td colspan="5" class="empty-state">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="modal-overlay" id="import-wizard" style="display:none;">
@@ -273,6 +287,15 @@
     joined_bni: 'Joined BNI', not_interested: 'Not Interested',
   };
   const STATUS_ORDER = ['uncontacted', 'no_answer', 'visit_scheduled', 'visit_attended', 'joined_bni'];
+  const EDIT_FIELD_LABELS = {
+    business_name: 'Business Name', contact_name: 'Contact Name', phone: 'Phone',
+    email: 'Email', industry: 'Industry', mailing_address: 'Mailing Address',
+    notes: 'Notes', additional_info: 'Additional Info',
+  };
+  const ACTIVITY_LABELS = {
+    contact_added: 'Added a contact', contact_edited: 'Edited a contact',
+    call_logged: 'Logged a call', email_clicked: 'Clicked Email',
+  };
   const OUTCOME_LABELS = {
     no_answer: 'No answer', left_voicemail: 'Left a voicemail',
     reached_conversation: 'Reached, had a conversation', not_interested: 'Not interested',
@@ -310,6 +333,7 @@
       if (btn.dataset.tab === 'dnc') loadDNC();
       if (btn.dataset.tab === 'hours') loadHoursPay();
       if (btn.dataset.tab === 'team') loadTeam();
+      if (btn.dataset.tab === 'activity') loadActivity();
     });
   });
 
@@ -546,6 +570,9 @@
 
         if (c) c[field] = newVal || null;
         refreshRowDisplay(id);
+        const label = EDIT_FIELD_LABELS[field] || field;
+        logActivity(client, profile.id, 'contact_edited', id, c ? contactDisplayName(c) : null,
+          `${label}: "${oldVal}" to "${newVal}"`);
       });
     });
 
@@ -656,7 +683,7 @@
     const assigned = document.getElementById('c-assigned').value;
     if (!assigned) { errEl.textContent = 'Add a caller profile before adding contacts (see README.md).'; return; }
 
-    const { error } = await client.from('contacts').insert({
+    const { data: inserted, error } = await client.from('contacts').insert({
       business_name: document.getElementById('c-business').value.trim() || null,
       contact_name: document.getElementById('c-contact-name').value.trim() || null,
       phone: document.getElementById('c-phone').value.trim(),
@@ -665,9 +692,12 @@
       lead_temperature: document.getElementById('c-temperature').value,
       notes: document.getElementById('c-notes').value.trim() || null,
       assigned_to: assigned,
-    });
+    }).select().single();
     if (error) { errEl.textContent = error.message; return; }
     document.getElementById('add-contact-form').reset();
+    if (inserted) {
+      logActivity(client, profile.id, 'contact_added', inserted.id, inserted.business_name || inserted.contact_name || '(no name)');
+    }
     loadContacts();
   });
 
@@ -1192,6 +1222,37 @@
   }
 
   // ---------- Team ----------
+  // ---------- Activity ----------
+  // Watches the caller specifically, not every login -- filtered
+  // client-side since Supabase's embedded-resource filters don't cleanly
+  // express "where the joined profile's role is X."
+  async function loadActivity() {
+    const tbody = document.getElementById('activity-tbody');
+    const { data, error } = await client
+      .from('activity_log')
+      .select('*, actor:profiles!actor_id(full_name, role)')
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (error) {
+      tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Couldn't load activity: ${error.message}</td></tr>`;
+      return;
+    }
+    const callerRows = (data || []).filter((a) => a.actor && a.actor.role === 'caller');
+    if (!callerRows.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nothing logged yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = callerRows.map((a) => `
+      <tr>
+        <td style="white-space:nowrap;">${new Date(a.created_at).toLocaleString()}</td>
+        <td>${a.actor.full_name}</td>
+        <td>${ACTIVITY_LABELS[a.action] || a.action}</td>
+        <td>${a.contact_label || ''}</td>
+        <td>${a.details || ''}</td>
+      </tr>
+    `).join('');
+  }
+
   async function loadTeam() {
     const tbody = document.getElementById('team-tbody');
     const { data, error } = await client.from('profiles').select('*').order('role').order('full_name');

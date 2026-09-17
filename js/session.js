@@ -60,6 +60,25 @@ async function logout() {
   window.location.href = 'index.html';
 }
 
+// Records a meaningful action for the admin-side activity log (contact
+// added/edited/deleted, a call logged, the Email link clicked). Not part
+// of the actual workflow those actions belong to, so a failure here is
+// logged to the console and otherwise swallowed rather than surfaced to
+// the user or allowed to block what they were actually doing.
+async function logActivity(client, actorId, action, contactId, contactLabel, details) {
+  try {
+    await client.from('activity_log').insert({
+      actor_id: actorId,
+      action,
+      contact_id: contactId || null,
+      contact_label: contactLabel || null,
+      details: details || null,
+    });
+  } catch (err) {
+    console.error('Could not log activity:', err.message);
+  }
+}
+
 // "Who's online" — a Realtime Presence channel shared by every logged-in
 // page. No table/migration involved, Presence is a broadcast-style channel
 // independent of Postgres replication. Renders into a #presence-bar element

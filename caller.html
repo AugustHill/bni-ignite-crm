@@ -202,6 +202,11 @@
   const STATUS_ORDER = ['uncontacted', 'no_answer', 'visit_scheduled', 'visit_attended', 'joined_bni'];
   const TEMPERATURE_LABELS = { hot: 'Hot', warm: 'Warm', cold: 'Cold' };
   const TEMPERATURE_ORDER = ['hot', 'warm', 'cold'];
+  const EDIT_FIELD_LABELS = {
+    business_name: 'Business Name', contact_name: 'Contact Name', phone: 'Phone',
+    email: 'Email', industry: 'Industry', mailing_address: 'Mailing Address',
+    notes: 'Notes', additional_info: 'Additional Info',
+  };
 
   let client, profile;
   const queueContainer = document.getElementById('queue-container');
@@ -284,7 +289,7 @@
           <div class="contact-badges">
             <span class="badge badge--${c.lead_temperature}">${TEMPERATURE_LABELS[c.lead_temperature] || c.lead_temperature}</span>
             <span class="badge badge--status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span>
-            ${c.email ? `<a class="btn btn--outline btn--sm" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>` : ''}
+            ${c.email ? `<a class="btn btn--outline btn--sm email-link" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>` : ''}
             <button type="button" class="btn btn--outline btn--sm edit-toggle">Edit</button>
             <button type="button" class="btn btn--accent btn--sm log-toggle">Log a call</button>
           </div>
@@ -374,7 +379,7 @@
       const badges = card.querySelector('.contact-badges');
       const emailLink = badges.querySelector('a[href^="mailto:"]');
       if (c.email && !emailLink) {
-        badges.querySelector('.edit-toggle').insertAdjacentHTML('beforebegin', `<a class="btn btn--outline btn--sm" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>`);
+        badges.querySelector('.edit-toggle').insertAdjacentHTML('beforebegin', `<a class="btn btn--outline btn--sm email-link" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>`);
       } else if (!c.email && emailLink) {
         emailLink.remove();
       } else if (c.email && emailLink) {
@@ -450,6 +455,9 @@
 
         if (c) c[field] = newVal || null;
         refreshCardDisplay(id);
+        const label = EDIT_FIELD_LABELS[field] || field;
+        logActivity(client, profile.id, 'contact_edited', id, c ? (c.business_name || c.contact_name || '(no name)') : null,
+          `${label}: "${oldVal}" to "${newVal}"`);
       });
     });
 
@@ -487,6 +495,10 @@
           errEl.textContent = error.message;
           return;
         }
+        const loggedContact = contactsById.get(contactId);
+        logActivity(client, profile.id, 'call_logged', contactId,
+          loggedContact ? (loggedContact.business_name || loggedContact.contact_name || '(no name)') : null,
+          OUTCOME_LABELS[outcome] || outcome);
         // The outcome can change status/dnc/follow_up_date enough to move
         // a contact into or out of either list, so refresh both.
         loadQueue();
@@ -535,6 +547,21 @@
 
   document.getElementById('queue-industry-filter').addEventListener('change', applyQueueFilterSort);
   document.getElementById('queue-sort').addEventListener('change', applyQueueFilterSort);
+
+  // Delegated (registered once here, not inside wireContactCards, which
+  // runs on every re-render and would otherwise stack up a duplicate
+  // listener on the container each time) so it keeps working no matter
+  // when an Email link was inserted, including one added after an edit.
+  function handleEmailLinkClick(e) {
+    const link = e.target.closest('.email-link');
+    if (!link) return;
+    const card = link.closest('.contact-card');
+    if (!card) return;
+    const c = contactsById.get(card.dataset.id);
+    logActivity(client, profile.id, 'email_clicked', card.dataset.id, c ? (c.business_name || c.contact_name || '(no name)') : null, null);
+  }
+  queueContainer.addEventListener('click', handleEmailLinkClick);
+  document.getElementById('followup-container').addEventListener('click', handleEmailLinkClick);
 
   async function loadQueue() {
     const { data, error } = await client
@@ -653,7 +680,7 @@
     const errEl = document.getElementById('add-contact-error');
     errEl.textContent = '';
 
-    const { error } = await client.from('contacts').insert({
+    const { data: inserted, error } = await client.from('contacts').insert({
       business_name: document.getElementById('ac-business').value.trim() || null,
       contact_name: document.getElementById('ac-contact-name').value.trim() || null,
       phone: document.getElementById('ac-phone').value.trim(),
@@ -662,10 +689,13 @@
       lead_temperature: document.getElementById('ac-temperature').value,
       notes: document.getElementById('ac-notes').value.trim() || null,
       assigned_to: profile.id,
-    });
+    }).select().single();
 
     if (error) { errEl.textContent = error.message; return; }
     document.getElementById('add-contact-form').reset();
+    if (inserted) {
+      logActivity(client, profile.id, 'contact_added', inserted.id, inserted.business_name || inserted.contact_name || '(no name)');
+    }
     loadQueue();
   });
 

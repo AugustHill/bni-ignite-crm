@@ -150,6 +150,13 @@ database, neither touches existing data beyond tagging ownership:
   contacts. Going forward, industry text is title-cased everywhere it's
   written (both add-contact forms, inline edits, CSV import) so the
   dropdown/filter doesn't fragment into casing duplicates.
+- `supabase/migration_017_activity_log.sql` — adds `activity_log`, a
+  meaningful-actions audit trail (not raw clicks): contact added/edited,
+  a call logged, the Email link clicked. Anyone logs their own actions;
+  only a coordinator can read them back. Append-only, no update or
+  delete policy at all. Powers the new Activity tab in admin.html
+  (filtered to the caller's actions specifically) and will power the
+  planned digest email.
 
 ## How the pieces fit together
 
@@ -188,9 +195,11 @@ database, neither touches existing data beyond tagging ownership:
   upload a CSV file through the import wizard), DNC List, Hours & Pay
   (rate, hours, and amount owed per person), and **Team** (everyone with a
   login — edit name/role/rate inline, view anyone's GPS plan, add a new
-  caller or administrator with a real working login on the spot). The
-  owner sees an extra **Private** button in the header that no one else
-  gets.
+  caller or administrator with a real working login on the spot), and
+  **Activity**, a rolling log of what the caller has done (contacts
+  added/edited, calls logged, Email links clicked), most recent first.
+  The owner sees an extra **Private** button in the header that no one
+  else gets.
   - The CSV import wizard reads your file's header row and shows a
     dropdown next to each column (Business Name, Contact Name, First/Last
     Name, Phone Number, Email, Industry, Mailing Address, Additional Info,
