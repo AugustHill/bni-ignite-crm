@@ -230,6 +230,30 @@ create policy "caller manages her own hours"
   with check (caller_id = auth.uid());
 
 -- ============================================================================
+-- open_categories: the BNI categories currently being recruited for, shown
+-- with a fire icon on the caller's page so she knows what to prioritize.
+-- Coordinator manages the list from admin.html; everyone reads it.
+-- ============================================================================
+create table if not exists open_categories (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+alter table open_categories enable row level security;
+
+create policy "everyone reads open categories"
+  on open_categories for select
+  to authenticated using (true);
+
+create policy "coordinator manages open categories"
+  on open_categories for all
+  to authenticated
+  using (is_coordinator())
+  with check (is_coordinator());
+
+-- ============================================================================
 -- call_scripts: the Script Book. Everyone with a login can read; only an
 -- administrator (coordinator or owner) adds/edits/deletes.
 -- ============================================================================

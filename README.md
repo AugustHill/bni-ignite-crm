@@ -143,6 +143,13 @@ database, neither touches existing data beyond tagging ownership:
   third lead-temperature tier alongside warm/cold. The Industry filter and
   Sort by (name/lead type/status) controls on the caller's queue are
   client-side only, no schema change needed for those.
+- `supabase/migration_016_open_categories_and_industry_casing.sql` — adds
+  `open_categories` (the BNI categories currently being recruited for,
+  managed from admin.html's Dashboard tab, shown with a fire icon on the
+  caller's page) and title-cases every existing industry value already in
+  contacts. Going forward, industry text is title-cased everywhere it's
+  written (both add-contact forms, inline edits, CSV import) so the
+  dropdown/filter doesn't fragment into casing duplicates.
 
 ## How the pieces fit together
 
@@ -167,9 +174,17 @@ database, neither touches existing data beyond tagging ownership:
   contact can appear in both tabs at once and stays in sync either way.
   Your Queue also has an Industry filter and a Sort by control (name,
   lead type hot/warm/cold, or status), both client-side over whatever
-  she's already loaded, no extra fetch per change.
-- **`admin.html`** — Dashboard (calling funnel + progress toward the
-  35-member goal), Contacts (add one at a time, paste many at once, or
+  she's already loaded, no extra fetch per change. Logging a call now
+  asks when it actually happened (defaults to right now, editable for
+  catching up on a call from earlier), and opening a card's Edit panel
+  also shows its full call history and a "last contacted" line, the same
+  history admin.html already had. Above the tabs, a fire-icon banner
+  lists whatever's currently in open_categories, hidden entirely when
+  that list is empty.
+- **`admin.html`** — Dashboard (calling funnel, progress toward the
+  35-member goal, and a Categories We're Recruiting For list you manage
+  directly, add/remove, shown to the caller with a fire icon), Contacts
+  (add one at a time, paste many at once, or
   upload a CSV file through the import wizard), DNC List, Hours & Pay
   (rate, hours, and amount owed per person), and **Team** (everyone with a
   login — edit name/role/rate inline, view anyone's GPS plan, add a new

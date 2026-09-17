@@ -21,6 +21,10 @@
   .followup-date.is-overdue { color: var(--color-danger); font-weight: 700; }
   .queue-toolbar { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
   .queue-toolbar .form-group { margin-bottom: 0; min-width: 180px; }
+  .open-category-chip { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 0.9rem; background: var(--color-danger-bg); color: var(--color-danger); padding: 6px 14px; border-radius: 999px; margin: 0 8px 8px 0; }
+  .call-history-item { padding: 8px 0; border-bottom: 1px solid var(--color-border); font-size: 0.83rem; }
+  .call-history-item:last-child { border-bottom: none; }
+  .call-history-item .when { color: var(--color-text-muted); font-size: 0.76rem; }
 </style>
 </head>
 <body>
@@ -107,6 +111,12 @@
         <p class="error-msg" id="add-contact-error"></p>
       </div>
     </form>
+  </div>
+
+  <div class="card" id="open-categories-card" style="display:none;">
+    <h2>Categories We're Recruiting For</h2>
+    <p class="hint" style="margin-top:-6px;">Prioritize finding businesses in these when you can.</p>
+    <div id="open-categories-list"></div>
   </div>
 
   <div class="card">
@@ -199,6 +209,18 @@
 
   function escapeAttr(s) {
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  }
+  function titleCase(s) {
+    return (s || '').trim().replace(/\s+/g, ' ').split(' ')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+  }
+  // Local (not UTC) wall-clock time, formatted for a datetime-local input's
+  // default value -- lets a call be logged as "just now" without any
+  // typing, but still be corrected to when it actually happened.
+  function nowLocalDatetimeValue() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
   function startOfWeek() {
@@ -304,6 +326,9 @@
             </div>
           </div>
           <p class="error-msg edit-error" data-error="${c.id}"></p>
+          <p class="hint" style="margin-top:10px;"><strong>Call History</strong></p>
+          <p class="hint last-contacted" data-last="${c.id}"></p>
+          <div class="call-history" data-history="${c.id}"><p class="hint">Loading…</p></div>
         </div>
         <form class="log-form">
           <div class="form-group">
@@ -312,6 +337,10 @@
               <option value="" disabled selected>Choose an outcome…</option>
               ${Object.entries(OUTCOME_LABELS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
             </select>
+          </div>
+          <div class="form-group">
+            <label>When did this happen?</label>
+            <input type="datetime-local" class="log-when" value="${nowLocalDatetimeValue()}">
           </div>
           <div class="banner log-visitor-reminder" style="display:none;">
             <span>📝</span>
@@ -365,8 +394,36 @@
     });
 
     container.querySelectorAll('.edit-toggle').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        btn.closest('.contact-card').querySelector('.edit-form').classList.toggle('is-open');
+      btn.addEventListener('click', async () => {
+        const card = btn.closest('.contact-card');
+        const editForm = card.querySelector('.edit-form');
+        const opening = !editForm.classList.contains('is-open');
+        editForm.classList.toggle('is-open');
+        if (!opening) return;
+
+        const histEl = card.querySelector('.call-history');
+        const lastEl = card.querySelector('.last-contacted');
+        const { data: history, error } = await client
+          .from('call_logs').select('*').eq('contact_id', card.dataset.id)
+          .order('called_at', { ascending: false });
+        if (error) {
+          histEl.innerHTML = `<p class="hint">Couldn't load history: ${error.message}</p>`;
+          lastEl.textContent = '';
+        } else if (!history.length) {
+          histEl.innerHTML = '<p class="hint">No calls logged yet.</p>';
+          lastEl.textContent = 'Never contacted.';
+        } else {
+          const last = history[0];
+          lastEl.innerHTML = `Last contacted: <strong>${new Date(last.called_at).toLocaleString()}</strong>${last.notes ? `. Notes: ${last.notes}` : ''}`;
+          histEl.innerHTML = history.map((h) => `
+            <div class="call-history-item">
+              <div class="when">${new Date(h.called_at).toLocaleString()}</div>
+              <strong>${OUTCOME_LABELS[h.outcome] || h.outcome}</strong>
+              ${h.notes ? `<div>${h.notes}</div>` : ''}
+              ${h.follow_up_date ? `<div class="hint">Follow up: ${h.follow_up_date}</div>` : ''}
+            </div>
+          `).join('');
+        }
       });
     });
 
@@ -376,7 +433,8 @@
         const field = el.dataset.field;
         const errEl = container.querySelector(`.edit-error[data-error="${id}"]`);
         const c = contactsById.get(id);
-        const newVal = el.value.trim();
+        let newVal = el.value.trim();
+        if (field === 'industry') { newVal = titleCase(newVal); el.value = newVal; }
         const oldVal = (c && c[field]) || '';
         if (newVal === oldVal) return;
 
@@ -410,8 +468,11 @@
         const outcome = form.querySelector('.log-outcome').value;
         const notes = form.querySelector('.log-notes').value.trim();
         const followUp = form.querySelector('.log-followup').value;
+        const whenVal = form.querySelector('.log-when').value;
         const errEl = form.querySelector('.log-error');
         errEl.textContent = '';
+
+        if (!whenVal) { errEl.textContent = 'Set when this call happened.'; return; }
 
         const { error } = await client.from('call_logs').insert({
           contact_id: contactId,
@@ -419,6 +480,7 @@
           outcome,
           notes: notes || null,
           follow_up_date: followUp || null,
+          called_at: new Date(whenVal).toISOString(),
         });
 
         if (error) {
@@ -596,7 +658,7 @@
       contact_name: document.getElementById('ac-contact-name').value.trim() || null,
       phone: document.getElementById('ac-phone').value.trim(),
       email: document.getElementById('ac-email').value.trim() || null,
-      industry: document.getElementById('ac-industry').value.trim() || null,
+      industry: titleCase(document.getElementById('ac-industry').value) || null,
       lead_temperature: document.getElementById('ac-temperature').value,
       notes: document.getElementById('ac-notes').value.trim() || null,
       assigned_to: profile.id,
@@ -606,6 +668,18 @@
     document.getElementById('add-contact-form').reset();
     loadQueue();
   });
+
+  async function loadOpenCategories() {
+    const card = document.getElementById('open-categories-card');
+    const listEl = document.getElementById('open-categories-list');
+    const { data, error } = await client.from('open_categories').select('*').order('sort_order').order('created_at');
+    if (error || !data || !data.length) {
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = 'block';
+    listEl.innerHTML = data.map((cat) => `<span class="open-category-chip">🔥 ${cat.name}</span>`).join('');
+  }
 
   document.getElementById('logout-btn').addEventListener('click', logout);
 
@@ -628,6 +702,7 @@
       document.getElementById('hours-date').valueAsDate = new Date();
       loadQueue();
       loadFollowUpPool();
+      loadOpenCategories();
       loadStats();
       loadHours();
     } catch (err) {
