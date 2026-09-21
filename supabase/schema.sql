@@ -80,6 +80,7 @@ create table if not exists contacts (
     'visit_attended', 'joined_bni'
   )),
   follow_up_date date,
+  last_contacted_at timestamptz,
   dnc boolean not null default false,
   dnc_reason text,
   dnc_at timestamptz,
@@ -204,6 +205,7 @@ begin
       else case when status = 'uncontacted' then 'no_answer' else status end
     end,
     follow_up_date = new.follow_up_date,
+    last_contacted_at = greatest(coalesce(last_contacted_at, new.called_at), new.called_at),
     dnc = case when new.outcome = 'dnc_requested' then true else dnc end,
     dnc_reason = case when new.outcome = 'dnc_requested'
       then coalesce(new.notes, 'Asked not to be called again') else dnc_reason end,

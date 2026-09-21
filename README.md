@@ -170,6 +170,13 @@ database, neither touches existing data beyond tagging ownership:
   so editing or deleting an entry does not touch the contact's current
   status. Fixing the status too, if needed, is a separate direct edit on
   its dropdown.
+- `supabase/migration_020_last_contacted_and_sorting.sql` — adds
+  `contacts.last_contacted_at`, backfilled from existing call_logs history
+  and kept in sync going forward by the call-outcome trigger (using
+  `greatest()` so a backdated call logged out of order can't regress it).
+  Like status, it only updates when a call is logged, editing or deleting
+  a past call_logs entry doesn't recompute it. Powers the new Last Called
+  column and its sort in admin.html's Contacts table.
 
 ## How the pieces fit together
 
@@ -214,7 +221,10 @@ database, neither touches existing data beyond tagging ownership:
   The owner sees an extra **Private** button in the header that no one
   else gets. A contact's call history (in its Edit panel) is editable
   and deletable from here too, for fixing a mistake or clearing out test
-  data, each entry has its own Edit/Delete.
+  data, each entry has its own Edit/Delete. The table also has two more
+  columns, Date Added and Last Called, and clicking Business, Type,
+  Status, Date Added, or Last Called sorts by that column (client-side,
+  click again to reverse).
   - The CSV import wizard reads your file's header row and shows a
     dropdown next to each column (Business Name, Contact Name, First/Last
     Name, Phone Number, Email, Industry, Mailing Address, Additional Info,

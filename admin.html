@@ -14,6 +14,10 @@
   .call-history-item:last-child { border-bottom: none; }
   .call-history-item .when { color: var(--color-text-muted); font-size: 0.76rem; }
   .status-select, .temperature-select { font-size: 0.78rem; padding: 5px 6px; }
+  th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+  th.sortable:hover { color: var(--color-primary-dark); }
+  th.sortable.sort-asc::after { content: " \25B2"; }
+  th.sortable.sort-desc::after { content: " \25BC"; }
   .temperature-select { min-width: 78px; }
   .status-select { min-width: 145px; }
   .progress-wrap { margin-top: 10px; }
@@ -174,8 +178,19 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th><input type="checkbox" id="select-all-contacts"></th><th>Business</th><th>Name</th><th>Phone</th><th>Industry</th><th>Type</th><th>Status</th><th></th></tr></thead>
-          <tbody id="contacts-tbody"><tr><td colspan="8" class="empty-state">Loading…</td></tr></tbody>
+          <thead><tr>
+            <th><input type="checkbox" id="select-all-contacts"></th>
+            <th class="sortable" data-sort="business_name">Business</th>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Industry</th>
+            <th class="sortable" data-sort="lead_temperature">Type</th>
+            <th class="sortable" data-sort="status">Status</th>
+            <th class="sortable sort-desc" data-sort="created_at">Date Added</th>
+            <th class="sortable" data-sort="last_contacted_at">Last Called</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="contacts-tbody"><tr><td colspan="10" class="empty-state">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -286,7 +301,15 @@
     visit_scheduled: 'Visit Scheduled', visit_attended: 'Visit Attended',
     joined_bni: 'Joined BNI', not_interested: 'Not Interested',
   };
+  // Funnel progression only -- not_interested is a dead end, not "further
+  // along" than the others, so it deliberately isn't part of this one.
   const STATUS_ORDER = ['uncontacted', 'no_answer', 'visit_scheduled', 'visit_attended', 'joined_bni'];
+  // Display order for the Contacts table's Sort by Status, which does
+  // need all six representable, not_interested included.
+  const STATUS_SORT_ORDER = ['uncontacted', 'no_answer', 'visit_scheduled', 'visit_attended', 'joined_bni', 'not_interested'];
+  const TEMPERATURE_ORDER = ['cold', 'warm', 'hot'];
+  let contactsSortColumn = 'created_at';
+  let contactsSortDirection = 'desc';
   const EDIT_FIELD_LABELS = {
     business_name: 'Business Name', contact_name: 'Contact Name', phone: 'Phone',
     email: 'Email', industry: 'Industry', mailing_address: 'Mailing Address',
@@ -431,19 +454,62 @@
   });
 
   // ---------- Contacts ----------
+  function sortContactsArray(arr) {
+    const dir = contactsSortDirection === 'asc' ? 1 : -1;
+    return [...arr].sort((a, b) => {
+      if (contactsSortColumn === 'business_name') {
+        return contactDisplayName(a).localeCompare(contactDisplayName(b)) * dir;
+      }
+      if (contactsSortColumn === 'lead_temperature') {
+        return (TEMPERATURE_ORDER.indexOf(a.lead_temperature) - TEMPERATURE_ORDER.indexOf(b.lead_temperature)) * dir;
+      }
+      if (contactsSortColumn === 'status') {
+        return (STATUS_SORT_ORDER.indexOf(a.status) - STATUS_SORT_ORDER.indexOf(b.status)) * dir;
+      }
+      if (contactsSortColumn === 'last_contacted_at') {
+        const av = a.last_contacted_at ? new Date(a.last_contacted_at).getTime() : -Infinity;
+        const bv = b.last_contacted_at ? new Date(b.last_contacted_at).getTime() : -Infinity;
+        return (av - bv) * dir;
+      }
+      // created_at, the default
+      return (new Date(a.created_at) - new Date(b.created_at)) * dir;
+    });
+  }
+
+  document.querySelectorAll('th.sortable').forEach((th) => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.sort;
+      if (contactsSortColumn === col) {
+        contactsSortDirection = contactsSortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        contactsSortColumn = col;
+        contactsSortDirection = 'asc';
+      }
+      document.querySelectorAll('th.sortable').forEach((h) => h.classList.remove('sort-asc', 'sort-desc'));
+      th.classList.add(contactsSortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+      renderContactsTable();
+    });
+  });
+
   async function loadContacts() {
     const tbody = document.getElementById('contacts-tbody');
-    const { data, error } = await client.from('contacts').select('*, creator:profiles!created_by(full_name), assignee:profiles!assigned_to(full_name)').order('created_at', { ascending: false });
+    const { data, error } = await client.from('contacts').select('*, creator:profiles!created_by(full_name), assignee:profiles!assigned_to(full_name)');
     if (error) {
-      tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Couldn't load contacts: ${error.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="10" class="empty-state">Couldn't load contacts: ${error.message}</td></tr>`;
       return;
     }
     currentContacts = data;
-    if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No contacts yet. Add one above.</td></tr>';
+    renderContactsTable();
+  }
+
+  function renderContactsTable() {
+    const tbody = document.getElementById('contacts-tbody');
+    if (!currentContacts.length) {
+      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No contacts yet. Add one above.</td></tr>';
       return;
     }
 
+    const data = sortContactsArray(currentContacts);
     const statusOpts = (selected) => Object.entries(STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('');
 
     tbody.innerHTML = data.map((c) => `
@@ -461,6 +527,8 @@
           </select>
         </td>
         <td><select class="status-select" data-id="${c.id}">${statusOpts(c.status)}</select></td>
+        <td style="white-space:nowrap;">${new Date(c.created_at).toLocaleDateString()}</td>
+        <td style="white-space:nowrap;">${c.last_contacted_at ? new Date(c.last_contacted_at).toLocaleDateString() : 'Never'}</td>
         <td style="white-space:nowrap;">
           <button type="button" class="btn btn--outline btn--sm view-toggle" data-id="${c.id}">Edit</button>
           ${c.email ? `<a class="btn btn--outline btn--sm" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>` : ''}
@@ -468,7 +536,7 @@
         </td>
       </tr>
       <tr class="detail-row" data-detail="${c.id}" style="display:none;">
-        <td colspan="8">
+        <td colspan="10">
           <p class="hint" style="margin-top:0;">Added by ${c.creator ? c.creator.full_name : 'Unknown'} on ${new Date(c.created_at).toLocaleString()}. Edits save automatically as you leave each field.</p>
           <div class="grid grid-2">
             <div class="form-group">
@@ -536,7 +604,7 @@
       cells[3].innerHTML = `<a href="tel:${c.phone}">${c.phone}</a>`;
       cells[4].textContent = c.industry || '';
       row.querySelector('.delete-contact').dataset.name = contactDisplayName(c);
-      const actionsCell = cells[7];
+      const actionsCell = cells[9];
       const emailLink = actionsCell.querySelector('a[href^="mailto:"]');
       if (c.email && !emailLink) {
         actionsCell.querySelector('.delete-contact').insertAdjacentHTML('beforebegin', `<a class="btn btn--outline btn--sm" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>`);
