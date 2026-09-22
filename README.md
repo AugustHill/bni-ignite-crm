@@ -215,7 +215,9 @@ database, neither touches existing data beyond tagging ownership:
   lists whatever's currently in open_categories, hidden entirely when
   that list is empty. Each card's Edit panel also has the same Tags
   picker as admin.html (she can apply tags, not create new ones), and
-  applied tags show on the card itself.
+  applied tags show on the card itself. Her Email button has the same
+  meeting-invite template choice admin.html has, calendar-picked
+  Wednesday, fixed 7:30 AM and address.
 - **`admin.html`** — Dashboard (calling funnel, progress toward the
   35-member goal, and a Categories We're Recruiting For list you manage
   directly, add/remove, shown to the caller with a fire icon), Contacts
@@ -239,7 +241,22 @@ database, neither touches existing data beyond tagging ownership:
   badges on the row itself wrap onto their own line so the row stays a
   fixed width instead of scrolling wider. A Tags card above Add a
   Contact manages which tags exist (add, remove), removing one strips it
-  from every contact that had it.
+  from every contact that had it. The Contacts card also has a business-
+  name search box and tag filter chips (both client-side, combine with
+  each other and with sorting), and the page itself runs wider than
+  everywhere else in the app (1500px, other pages stay at 1100px) since
+  this table has a lot to show at once.
+  - A contact's Email button opens a choice: a blank email, or the
+    meeting-invite template. The template fills in a fixed script
+    (thank-you copy, BNI terminology, the KW Palm Harbor address) and a
+    date picked from a real calendar popup where only Wednesdays are
+    clickable, every other day is disabled, so the date and the fixed
+    7:30 AM time can't come out wrong. Picking a date builds a mailto:
+    link with the subject and body pre-filled and opens it, same
+    no-real-send pattern the rest of the app's Email buttons use, the
+    person still hits send themselves in their own mail client. The
+    template text and address live in `MEETING_ADDRESS`/`MEETING_TIME`/
+    `buildInviteMailto()` in `js/session.js`, shared with caller.html.
   - The CSV import wizard reads your file's header row and shows a
     dropdown next to each column (Business Name, Contact Name, First/Last
     Name, Phone Number, Email, Industry, Mailing Address, Additional Info,

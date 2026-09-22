@@ -162,6 +162,23 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
   .badge--tag-interested { background: #1a3527; color: #7fd4a8; }
 }
 
+.cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.cal-nav { background: none; border: 1px solid var(--color-border); border-radius: 6px; width: 30px; height: 30px; cursor: pointer; font-size: 1.1rem; color: var(--color-text); }
+.cal-nav:disabled { opacity: 0.3; cursor: not-allowed; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+.cal-weekdays { font-size: 0.72rem; font-weight: 700; color: var(--color-text-muted); margin-bottom: 4px; }
+.cal-cell { padding: 8px 0; border-radius: 6px; font-size: 0.85rem; }
+.cal-cell.cal-clickable { background: var(--color-primary); color: #fff; cursor: pointer; font-weight: 700; }
+.cal-cell.cal-clickable:hover { background: var(--color-primary-dark); }
+.cal-cell.cal-disabled { color: var(--color-text-muted); opacity: 0.3; }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: flex-start; justify-content: center; padding: 30px 16px; overflow-y: auto; z-index: 100; }
+.modal-box { background: var(--color-card); border-radius: var(--radius); box-shadow: var(--shadow-md); width: 100%; max-width: 780px; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--color-border); }
+.modal-header h2 { margin: 0; font-size: 1.1rem; }
+.modal-close { background: none; border: none; font-size: 1.4rem; line-height: 1; cursor: pointer; color: var(--color-text-muted); padding: 4px 8px; }
+.modal-body { padding: 20px 24px 24px; }
+
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--color-border); font-size: 0.85rem; vertical-align: top; }
 th { color: var(--color-text-muted); font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }

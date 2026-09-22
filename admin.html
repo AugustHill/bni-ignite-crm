@@ -18,6 +18,11 @@
   th.sortable:hover { color: var(--color-primary-dark); }
   th.sortable.sort-asc::after { content: " \25B2"; }
   th.sortable.sort-desc::after { content: " \25BC"; }
+  .wrap { max-width: 1500px; }
+  .contacts-toolbar { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px; }
+  .contacts-toolbar .form-group { margin-bottom: 0; min-width: 220px; }
+  .tag-filter-chip { cursor: pointer; user-select: none; opacity: 0.35; border: 1px solid var(--color-border); }
+  .tag-filter-chip.is-active { opacity: 1; border-color: transparent; }
   .contacts-table th, .contacts-table td { padding: 8px 8px; font-size: 0.83rem; }
   .contacts-table tbody tr[data-row] { cursor: pointer; }
   .contacts-table tbody tr[data-row]:hover { background: var(--color-bg-alt); }
@@ -27,12 +32,6 @@
   .progress-wrap { margin-top: 10px; }
   .progress-labels { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 6px; }
 
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: flex-start; justify-content: center; padding: 30px 16px; overflow-y: auto; z-index: 100; }
-  .modal-box { background: var(--color-card); border-radius: var(--radius); box-shadow: var(--shadow-md); width: 100%; max-width: 780px; }
-  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--color-border); }
-  .modal-header h2 { margin: 0; font-size: 1.1rem; }
-  .modal-close { background: none; border: none; font-size: 1.4rem; line-height: 1; cursor: pointer; color: var(--color-text-muted); padding: 4px 8px; }
-  .modal-body { padding: 20px 24px 24px; }
   .wizard-steps { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
   .wizard-step-chip { font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--color-bg-alt); color: var(--color-text-muted); }
   .wizard-step-chip.is-current { background: var(--color-primary); color: #fff; }
@@ -186,6 +185,16 @@
 
     <div class="card">
       <h2>All Contacts</h2>
+      <div class="contacts-toolbar">
+        <div class="form-group">
+          <label for="contacts-search">Search Business</label>
+          <input type="text" id="contacts-search" placeholder="Start typing a business name…">
+        </div>
+        <div class="form-group" style="flex:1;">
+          <label>Filter by Tag</label>
+          <div id="contacts-tag-filter"></div>
+        </div>
+      </div>
       <div style="margin-bottom:12px;">
         <button type="button" class="btn btn--outline btn--sm" id="export-csv-btn">Export CSV</button>
         <button type="button" class="btn btn--danger btn--sm" id="delete-selected-btn" disabled>Delete Selected</button>
@@ -289,6 +298,16 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="invite-modal" style="display:none;">
+  <div class="modal-box" style="max-width:420px;">
+    <div class="modal-header">
+      <h2>Email <span id="invite-contact-name"></span></h2>
+      <button type="button" class="modal-close" id="invite-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body" id="invite-modal-body"></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="import-wizard" style="display:none;">
   <div class="modal-box">
     <div class="modal-header">
@@ -326,6 +345,13 @@
   const TEMPERATURE_LABELS = { hot: 'Hot', warm: 'Warm', cold: 'Cold' };
   let contactsSortColumn = 'created_at';
   let contactsSortDirection = 'desc';
+  let contactsSearchQuery = '';
+  let contactsTagFilter = new Set();
+
+  document.getElementById('contacts-search').addEventListener('input', (e) => {
+    contactsSearchQuery = e.target.value.trim().toLowerCase();
+    renderContactsTable();
+  });
   const EDIT_FIELD_LABELS = {
     business_name: 'Business Name', contact_name: 'Contact Name', phone: 'Phone',
     email: 'Email', industry: 'Industry', mailing_address: 'Mailing Address',
@@ -484,6 +510,54 @@
     loadOpenCategories();
   });
 
+  // ---------- Meeting invite ----------
+  // Clicking a contact's Email button opens this instead of going straight
+  // to mailto:, so there's a choice between a blank email and the
+  // meeting-invite template (date picked from a calendar that only lets
+  // you land on a Wednesday, everything else fixed: time, address, copy).
+  function openInviteModal(contact) {
+    document.getElementById('invite-contact-name').textContent = contactDisplayName(contact);
+    const body = document.getElementById('invite-modal-body');
+    body.innerHTML = `
+      <p class="hint" style="margin-top:0;">How would you like to email them?</p>
+      <button type="button" class="btn btn--primary" id="invite-choice-template" style="width:100%; margin-bottom:8px;">Invite to a Meeting</button>
+      <button type="button" class="btn btn--outline" id="invite-choice-plain" style="width:100%;">Just Send a Blank Email</button>
+    `;
+    document.getElementById('invite-modal').style.display = 'flex';
+
+    document.getElementById('invite-choice-plain').addEventListener('click', () => {
+      openMailto(`mailto:${contact.email}`);
+      logActivity(client, profile.id, 'email_clicked', contact.id, contactDisplayName(contact));
+      closeInviteModal();
+    });
+    document.getElementById('invite-choice-template').addEventListener('click', () => {
+      body.innerHTML = `
+        <p class="hint" style="margin-top:0;">Meetings are every Wednesday at 7:30 AM. Pick the date to invite them to:</p>
+        <div id="invite-calendar"></div>
+      `;
+      renderMiniCalendar(document.getElementById('invite-calendar'), (date) => {
+        openMailto(buildInviteMailto(contact, date, profile.full_name));
+        logActivity(client, profile.id, 'email_clicked', contact.id, contactDisplayName(contact), `Meeting invite for ${date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`);
+        closeInviteModal();
+      });
+    });
+  }
+
+  function closeInviteModal() {
+    document.getElementById('invite-modal').style.display = 'none';
+  }
+
+  document.getElementById('invite-modal-close').addEventListener('click', closeInviteModal);
+  document.getElementById('invite-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'invite-modal') closeInviteModal();
+  });
+  document.getElementById('contacts-tbody').addEventListener('click', (e) => {
+    const btn = e.target.closest('.email-invite-btn');
+    if (!btn) return;
+    const contact = currentContacts.find((x) => x.id === btn.dataset.id);
+    if (contact) openInviteModal(contact);
+  });
+
   // ---------- Contacts ----------
   function sortContactsArray(arr) {
     const dir = contactsSortDirection === 'asc' ? 1 : -1;
@@ -536,6 +610,7 @@
     currentContacts = data;
     renderContactsTable();
     renderTagsManager();
+    renderContactsTagFilter();
   }
 
   function tagBadgeClass(name) {
@@ -553,6 +628,23 @@
     }).join('')}</div>`;
   }
 
+  function renderContactsTagFilter() {
+    const el = document.getElementById('contacts-tag-filter');
+    if (!allTags.length) {
+      el.innerHTML = '<p class="hint" style="margin:0;">No tags yet.</p>';
+      return;
+    }
+    el.innerHTML = allTags.map((t) => `<span class="badge tag-filter-chip ${tagBadgeClass(t.name)} ${contactsTagFilter.has(t.id) ? 'is-active' : ''}" data-tag-id="${t.id}">${t.name}</span>`).join('');
+    el.querySelectorAll('.tag-filter-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const id = chip.dataset.tagId;
+        if (contactsTagFilter.has(id)) contactsTagFilter.delete(id); else contactsTagFilter.add(id);
+        chip.classList.toggle('is-active');
+        renderContactsTable();
+      });
+    });
+  }
+
   function renderTagsManager() {
     const listEl = document.getElementById('tags-list');
     if (!allTags.length) {
@@ -568,8 +660,10 @@
       btn.addEventListener('click', async () => {
         if (!confirm(`Remove the "${btn.dataset.name}" tag? This removes it from every contact that has it.`)) return;
         await client.from('tags').delete().eq('id', btn.dataset.id);
+        contactsTagFilter.delete(btn.dataset.id);
         await refreshTagsData();
         renderTagsManager();
+        renderContactsTagFilter();
         renderContactsTable();
       });
     });
@@ -588,6 +682,7 @@
     input.value = '';
     await refreshTagsData();
     renderTagsManager();
+    renderContactsTagFilter();
     renderContactsTable();
   });
 
@@ -598,7 +693,22 @@
       return;
     }
 
-    const data = sortContactsArray(currentContacts);
+    let filtered = currentContacts;
+    if (contactsSearchQuery) {
+      filtered = filtered.filter((c) => (c.business_name || '').toLowerCase().includes(contactsSearchQuery));
+    }
+    if (contactsTagFilter.size) {
+      filtered = filtered.filter((c) => {
+        const tagIds = contactTagMap.get(c.id);
+        return tagIds && [...contactsTagFilter].some((tid) => tagIds.has(tid));
+      });
+    }
+    if (!filtered.length) {
+      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No contacts match your search or tag filter.</td></tr>';
+      return;
+    }
+
+    const data = sortContactsArray(filtered);
     const statusOpts = (selected) => Object.entries(STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('');
     const tagPickerHtml = (c) => allTags.map((t) => `<span class="badge tag-toggle ${tagBadgeClass(t.name)} ${(contactTagMap.get(c.id) || new Set()).has(t.id) ? 'is-active' : ''}" data-tag-id="${t.id}">${t.name}</span>`).join('');
 
@@ -618,7 +728,7 @@
         <td style="white-space:nowrap;">${c.last_contacted_at ? new Date(c.last_contacted_at).toLocaleDateString() : 'Never'}</td>
         <td style="white-space:nowrap;">
           <button type="button" class="btn btn--outline btn--sm view-toggle" data-id="${c.id}">Edit</button>
-          ${c.email ? `<a class="btn btn--outline btn--sm" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>` : ''}
+          ${c.email ? `<button type="button" class="btn btn--outline btn--sm email-invite-btn" data-id="${c.id}">Email</button>` : ''}
           <button type="button" class="btn btn--danger btn--sm delete-contact" data-id="${c.id}" data-name="${contactDisplayName(c)}">Delete</button>
         </td>
       </tr>
@@ -698,13 +808,11 @@
       cells[6].innerHTML = `<span class="badge badge--status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span>`;
       row.querySelector('.delete-contact').dataset.name = contactDisplayName(c);
       const actionsCell = cells[9];
-      const emailLink = actionsCell.querySelector('a[href^="mailto:"]');
-      if (c.email && !emailLink) {
-        actionsCell.querySelector('.delete-contact').insertAdjacentHTML('beforebegin', `<a class="btn btn--outline btn--sm" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>`);
-      } else if (!c.email && emailLink) {
-        emailLink.remove();
-      } else if (c.email && emailLink) {
-        emailLink.href = `mailto:${c.email}`;
+      const emailBtn = actionsCell.querySelector('.email-invite-btn');
+      if (c.email && !emailBtn) {
+        actionsCell.querySelector('.delete-contact').insertAdjacentHTML('beforebegin', `<button type="button" class="btn btn--outline btn--sm email-invite-btn" data-id="${c.id}">Email</button>`);
+      } else if (!c.email && emailBtn) {
+        emailBtn.remove();
       }
     }
 

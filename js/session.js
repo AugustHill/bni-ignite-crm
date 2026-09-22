@@ -91,6 +91,101 @@ async function logActivity(client, actorId, action, contactId, contactLabel, det
   }
 }
 
+// The one address and time every meeting invite uses. Not configurable
+// from the UI on purpose -- Derrick asked specifically that no one be
+// able to type the wrong date or time in.
+const MEETING_ADDRESS = 'Keller Williams Realty, 30522 US Highway 19 North, Suite 107, Palm Harbor, Florida 34684';
+const MEETING_TIME = '7:30 AM';
+
+// Opens a mailto: URL in a way that never navigates the current tab away
+// (a plain click on a mailto link can, depending on the browser's
+// configured handler) -- same pattern already used for the CSV export
+// download link elsewhere in this app.
+function openMailto(url) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// Renders a one-month calendar into `container`. Only Wednesdays today or
+// later are clickable, calling onSelect(date) with a Date at local
+// midnight; every other cell is disabled, including past Wednesdays. Re-
+// renders itself in place for month navigation, so it can be called again
+// with an explicit `viewDate` to jump to a specific month.
+function renderMiniCalendar(container, onSelect, viewDate) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const view = viewDate || new Date(today.getFullYear(), today.getMonth(), 1);
+  const year = view.getFullYear();
+  const month = view.getMonth();
+  const monthLabel = view.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const startPad = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const canGoPrev = new Date(year, month, 1) > new Date(today.getFullYear(), today.getMonth(), 1);
+
+  let cellsHtml = '';
+  for (let i = 0; i < startPad; i++) cellsHtml += '<div class="cal-cell cal-blank"></div>';
+  for (let day = 1; day <= daysInMonth; day++) {
+    const cellDate = new Date(year, month, day);
+    const clickable = cellDate.getDay() === 3 && cellDate >= today;
+    cellsHtml += `<div class="cal-cell ${clickable ? 'cal-clickable' : 'cal-disabled'}" ${clickable ? `data-date="${cellDate.getFullYear()}-${String(cellDate.getMonth() + 1).padStart(2, '0')}-${String(cellDate.getDate()).padStart(2, '0')}"` : ''}>${day}</div>`;
+  }
+
+  container.innerHTML = `
+    <div class="cal-header">
+      <button type="button" class="cal-nav" data-nav="prev" ${canGoPrev ? '' : 'disabled'} aria-label="Previous month">&lsaquo;</button>
+      <strong>${monthLabel}</strong>
+      <button type="button" class="cal-nav" data-nav="next" aria-label="Next month">&rsaquo;</button>
+    </div>
+    <div class="cal-grid cal-weekdays"><div>Su</div><div>Mo</div><div>Tu</div><div>We</div><div>Th</div><div>Fr</div><div>Sa</div></div>
+    <div class="cal-grid">${cellsHtml}</div>
+  `;
+
+  container.querySelectorAll('.cal-clickable').forEach((cell) => {
+    cell.addEventListener('click', () => onSelect(new Date(`${cell.dataset.date}T00:00:00`)));
+  });
+  container.querySelector('[data-nav="prev"]').addEventListener('click', () => {
+    if (canGoPrev) renderMiniCalendar(container, onSelect, new Date(year, month - 1, 1));
+  });
+  container.querySelector('[data-nav="next"]').addEventListener('click', () => {
+    renderMiniCalendar(container, onSelect, new Date(year, month + 1, 1));
+  });
+}
+
+// Builds the meeting-invite mailto: URL for one contact and a chosen
+// Wednesday. Time and address are fixed (MEETING_TIME/MEETING_ADDRESS
+// above), the only thing that varies is the date and who it's addressed
+// and signed to.
+function buildInviteMailto(contact, meetingDate, senderName) {
+  const dateStr = meetingDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const subject = `You're Invited to BNI Ignite's Weekly Meeting on ${dateStr}`;
+  const greetingName = contact.contact_name || contact.business_name || 'there';
+  const body = [
+    `Hi ${greetingName},`,
+    '',
+    `Thank you for your interest in BNI Ignite! We'd love to have you join us as our guest at our weekly chapter meeting.`,
+    '',
+    'Meeting Details:',
+    `Date: ${dateStr}`,
+    `Time: ${MEETING_TIME}`,
+    `Location: ${MEETING_ADDRESS}`,
+    '',
+    'Thank you for attending the BNI Ignite weekly chapter meeting. Please bring business cards, as we are eager to network with you.',
+    '',
+    "BNI is the world's leading referral marketing organization, built on the philosophy of Givers Gain: the more you give to others, the more you receive in return. Each week, our members exchange qualified business referrals and build long-term relationships rooted in trust. As our guest, you'll get a firsthand look at how our chapter operates, meet local business owners across a variety of industries, and experience the kind of word-of-mouth marketing that keeps our members' pipelines full.",
+    '',
+    'We look forward to welcoming you!',
+    '',
+    senderName || '',
+    'BNI Ignite',
+  ].join('\n');
+  return `mailto:${contact.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 // "Who's online" — a Realtime Presence channel shared by every logged-in
 // page. No table/migration involved, Presence is a broadcast-style channel
 // independent of Postgres replication. Renders into a #presence-bar element

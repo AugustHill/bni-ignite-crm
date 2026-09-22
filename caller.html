@@ -181,6 +181,16 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="invite-modal" style="display:none;">
+  <div class="modal-box" style="max-width:420px;">
+    <div class="modal-header">
+      <h2>Email <span id="invite-contact-name"></span></h2>
+      <button type="button" class="modal-close" id="invite-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body" id="invite-modal-body"></div>
+  </div>
+</div>
+
 <script src="js/supabase-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/session.js"></script>
@@ -320,7 +330,7 @@
           <div class="contact-badges">
             <span class="badge badge--${c.lead_temperature}">${TEMPERATURE_LABELS[c.lead_temperature] || c.lead_temperature}</span>
             <span class="badge badge--status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span>
-            ${c.email ? `<a class="btn btn--outline btn--sm email-link" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>` : ''}
+            ${c.email ? `<button type="button" class="btn btn--outline btn--sm email-invite-btn" data-id="${c.id}">Email</button>` : ''}
             <button type="button" class="btn btn--outline btn--sm edit-toggle">Edit</button>
             <button type="button" class="btn btn--accent btn--sm log-toggle">Log a call</button>
           </div>
@@ -412,13 +422,11 @@
       card.querySelector('h3').textContent = c.business_name || c.contact_name || '(no name)';
       card.querySelector('.contact-meta').innerHTML = `${c.business_name && c.contact_name ? c.contact_name + ' · ' : ''}<a href="tel:${c.phone}">${c.phone}</a>${c.industry ? ' · ' + c.industry : ''}`;
       const badges = card.querySelector('.contact-badges');
-      const emailLink = badges.querySelector('a[href^="mailto:"]');
-      if (c.email && !emailLink) {
-        badges.querySelector('.edit-toggle').insertAdjacentHTML('beforebegin', `<a class="btn btn--outline btn--sm email-link" href="mailto:${c.email}" target="_blank" rel="noopener">Email</a>`);
-      } else if (!c.email && emailLink) {
-        emailLink.remove();
-      } else if (c.email && emailLink) {
-        emailLink.href = `mailto:${c.email}`;
+      const emailBtn = badges.querySelector('.email-invite-btn');
+      if (c.email && !emailBtn) {
+        badges.querySelector('.edit-toggle').insertAdjacentHTML('beforebegin', `<button type="button" class="btn btn--outline btn--sm email-invite-btn" data-id="${id}">Email</button>`);
+      } else if (!c.email && emailBtn) {
+        emailBtn.remove();
       }
       const tagBadgesEl = card.querySelector('.tag-badges');
       const newTagsHtml = tagBadgesHtml(id);
@@ -617,17 +625,57 @@
   // Delegated (registered once here, not inside wireContactCards, which
   // runs on every re-render and would otherwise stack up a duplicate
   // listener on the container each time) so it keeps working no matter
-  // when an Email link was inserted, including one added after an edit.
-  function handleEmailLinkClick(e) {
-    const link = e.target.closest('.email-link');
-    if (!link) return;
-    const card = link.closest('.contact-card');
-    if (!card) return;
-    const c = contactsById.get(card.dataset.id);
-    logActivity(client, profile.id, 'email_clicked', card.dataset.id, c ? (c.business_name || c.contact_name || '(no name)') : null, null);
+  // when an Email button was inserted, including one added after an edit.
+  function handleEmailBtnClick(e) {
+    const btn = e.target.closest('.email-invite-btn');
+    if (!btn) return;
+    const c = contactsById.get(btn.dataset.id);
+    if (c) openInviteModal(c);
   }
-  queueContainer.addEventListener('click', handleEmailLinkClick);
-  document.getElementById('followup-container').addEventListener('click', handleEmailLinkClick);
+  queueContainer.addEventListener('click', handleEmailBtnClick);
+  document.getElementById('followup-container').addEventListener('click', handleEmailBtnClick);
+
+  // Clicking a contact's Email button opens this instead of going straight
+  // to mailto:, a choice between a blank email and the meeting-invite
+  // template (date picked from a calendar that only lets you land on a
+  // Wednesday, everything else fixed: time, address, copy).
+  function openInviteModal(contact) {
+    document.getElementById('invite-contact-name').textContent = contact.business_name || contact.contact_name || '(no name)';
+    const body = document.getElementById('invite-modal-body');
+    body.innerHTML = `
+      <p class="hint" style="margin-top:0;">How would you like to email them?</p>
+      <button type="button" class="btn btn--primary" id="invite-choice-template" style="width:100%; margin-bottom:8px;">Invite to a Meeting</button>
+      <button type="button" class="btn btn--outline" id="invite-choice-plain" style="width:100%;">Just Send a Blank Email</button>
+    `;
+    document.getElementById('invite-modal').style.display = 'flex';
+
+    document.getElementById('invite-choice-plain').addEventListener('click', () => {
+      openMailto(`mailto:${contact.email}`);
+      logActivity(client, profile.id, 'email_clicked', contact.id, contact.business_name || contact.contact_name || '(no name)');
+      closeInviteModal();
+    });
+    document.getElementById('invite-choice-template').addEventListener('click', () => {
+      body.innerHTML = `
+        <p class="hint" style="margin-top:0;">Meetings are every Wednesday at 7:30 AM. Pick the date to invite them to:</p>
+        <div id="invite-calendar"></div>
+      `;
+      renderMiniCalendar(document.getElementById('invite-calendar'), (date) => {
+        openMailto(buildInviteMailto(contact, date, profile.full_name));
+        logActivity(client, profile.id, 'email_clicked', contact.id, contact.business_name || contact.contact_name || '(no name)',
+          `Meeting invite for ${date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}`);
+        closeInviteModal();
+      });
+    });
+  }
+
+  function closeInviteModal() {
+    document.getElementById('invite-modal').style.display = 'none';
+  }
+
+  document.getElementById('invite-modal-close').addEventListener('click', closeInviteModal);
+  document.getElementById('invite-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'invite-modal') closeInviteModal();
+  });
 
   async function loadQueue() {
     const [{ data, error }] = await Promise.all([
