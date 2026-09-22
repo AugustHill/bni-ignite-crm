@@ -177,6 +177,12 @@ database, neither touches existing data beyond tagging ownership:
   Like status, it only updates when a call is logged, editing or deleting
   a past call_logs entry doesn't recompute it. Powers the new Last Called
   column and its sort in admin.html's Contacts table.
+- `supabase/migration_021_tags.sql` — adds `tags` and `contact_tags`, a
+  coordinator-managed label vocabulary (seeded with Interested and Not
+  Interested) attachable to any number of contacts by either the
+  coordinator or the caller assigned to that contact. Many-to-many on
+  purpose, a contact can carry more than one at once. Powers the Tags
+  card on the Contacts tab and the tag picker in both apps' Edit panels.
 
 ## How the pieces fit together
 
@@ -207,7 +213,9 @@ database, neither touches existing data beyond tagging ownership:
   also shows its full call history and a "last contacted" line, the same
   history admin.html already had. Above the tabs, a fire-icon banner
   lists whatever's currently in open_categories, hidden entirely when
-  that list is empty.
+  that list is empty. Each card's Edit panel also has the same Tags
+  picker as admin.html (she can apply tags, not create new ones), and
+  applied tags show on the card itself.
 - **`admin.html`** — Dashboard (calling funnel, progress toward the
   35-member goal, and a Categories We're Recruiting For list you manage
   directly, add/remove, shown to the caller with a fire icon), Contacts
@@ -224,7 +232,14 @@ database, neither touches existing data beyond tagging ownership:
   data, each entry has its own Edit/Delete. The table also has two more
   columns, Date Added and Last Called, and clicking Business, Type,
   Status, Date Added, or Last Called sorts by that column (client-side,
-  click again to reverse).
+  click again to reverse). Type and Status show as read-only badges in
+  the row now, not dropdowns, editable from the Edit panel instead of
+  the row, same as everything else. Clicking anywhere on a row (not just
+  the Edit button) opens its panel, which also has a Tags picker; tag
+  badges on the row itself wrap onto their own line so the row stays a
+  fixed width instead of scrolling wider. A Tags card above Add a
+  Contact manages which tags exist (add, remove), removing one strips it
+  from every contact that had it.
   - The CSV import wizard reads your file's header row and shows a
     dropdown next to each column (Business Name, Contact Name, First/Last
     Name, Phone Number, Email, Industry, Mailing Address, Additional Info,

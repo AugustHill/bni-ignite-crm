@@ -275,6 +275,36 @@
   // appear in either or both, so edits made from one place stay correct if
   // the same contact is also showing in the other.
   let contactsById = new Map();
+  let allTags = [];
+  let contactTagMap = new Map();
+
+  async function refreshTagsData() {
+    const [{ data: tagsData }, { data: ctData }] = await Promise.all([
+      client.from('tags').select('*').order('name'),
+      client.from('contact_tags').select('*'),
+    ]);
+    allTags = tagsData || [];
+    contactTagMap = new Map();
+    (ctData || []).forEach((row) => {
+      if (!contactTagMap.has(row.contact_id)) contactTagMap.set(row.contact_id, new Set());
+      contactTagMap.get(row.contact_id).add(row.tag_id);
+    });
+  }
+
+  function tagBadgeClass(name) {
+    if (name === 'Interested') return 'badge--tag-interested';
+    if (name === 'Not Interested') return 'badge--tag-not-interested';
+    return 'badge--tag';
+  }
+
+  function tagBadgesHtml(contactId) {
+    const ids = contactTagMap.get(contactId);
+    if (!ids || !ids.size) return '';
+    return `<div class="tag-badges">${[...ids].map((tid) => {
+      const t = allTags.find((x) => x.id === tid);
+      return t ? `<span class="badge ${tagBadgeClass(t.name)}">${t.name}</span>` : '';
+    }).join('')}</div>`;
+  }
 
   function contactCardHtml(c) {
     const overdue = c.follow_up_date && c.follow_up_date < new Date().toISOString().slice(0, 10);
@@ -285,6 +315,7 @@
             <h3>${c.business_name || c.contact_name || '(no name)'}</h3>
             <p class="contact-meta">${c.business_name && c.contact_name ? c.contact_name + ' · ' : ''}<a href="tel:${c.phone}">${c.phone}</a>${c.industry ? ' · ' + c.industry : ''}</p>
             ${c.follow_up_date ? `<p class="followup-date${overdue ? ' is-overdue' : ''}">Follow up: ${c.follow_up_date}${overdue ? ' (overdue)' : ''}</p>` : ''}
+            ${tagBadgesHtml(c.id)}
           </div>
           <div class="contact-badges">
             <span class="badge badge--${c.lead_temperature}">${TEMPERATURE_LABELS[c.lead_temperature] || c.lead_temperature}</span>
@@ -328,6 +359,10 @@
             <div class="form-group" style="grid-column: 1 / -1;">
               <label>Additional Info</label>
               <textarea class="edit-field" data-id="${c.id}" data-field="additional_info" rows="2">${c.additional_info || ''}</textarea>
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label>Tags</label>
+              <div class="tag-picker" data-id="${c.id}">${allTags.map((t) => `<span class="badge tag-toggle ${tagBadgeClass(t.name)} ${(contactTagMap.get(c.id) || new Set()).has(t.id) ? 'is-active' : ''}" data-tag-id="${t.id}">${t.name}</span>`).join('')}</div>
             </div>
           </div>
           <p class="error-msg edit-error" data-error="${c.id}"></p>
@@ -385,6 +420,14 @@
       } else if (c.email && emailLink) {
         emailLink.href = `mailto:${c.email}`;
       }
+      const tagBadgesEl = card.querySelector('.tag-badges');
+      const newTagsHtml = tagBadgesHtml(id);
+      if (newTagsHtml) {
+        if (tagBadgesEl) tagBadgesEl.outerHTML = newTagsHtml;
+        else card.querySelector('h3').closest('div').insertAdjacentHTML('beforeend', newTagsHtml);
+      } else if (tagBadgesEl) {
+        tagBadgesEl.remove();
+      }
     });
   }
 
@@ -429,6 +472,28 @@
             </div>
           `).join('');
         }
+      });
+    });
+
+    container.querySelectorAll('.tag-toggle').forEach((el) => {
+      el.addEventListener('click', async () => {
+        const contactId = el.closest('.tag-picker').dataset.id;
+        const tagId = el.dataset.tagId;
+        const isActive = el.classList.contains('is-active');
+        if (isActive) {
+          await client.from('contact_tags').delete().eq('contact_id', contactId).eq('tag_id', tagId);
+          contactTagMap.get(contactId)?.delete(tagId);
+        } else {
+          await client.from('contact_tags').insert({ contact_id: contactId, tag_id: tagId });
+          if (!contactTagMap.has(contactId)) contactTagMap.set(contactId, new Set());
+          contactTagMap.get(contactId).add(tagId);
+        }
+        // A contact can appear in both the queue and the follow-up pool at
+        // once, so keep every matching picker's toggle state in sync, not
+        // just the one that was clicked.
+        document.querySelectorAll(`.tag-picker[data-id="${contactId}"] .tag-toggle[data-tag-id="${tagId}"]`)
+          .forEach((t) => t.classList.toggle('is-active', !isActive));
+        refreshCardDisplay(contactId);
       });
     });
 
@@ -565,13 +630,16 @@
   document.getElementById('followup-container').addEventListener('click', handleEmailLinkClick);
 
   async function loadQueue() {
-    const { data, error } = await client
-      .from('contacts')
-      .select('*')
-      .eq('assigned_to', profile.id)
-      .eq('dnc', false)
-      .not('status', 'in', '(joined_bni,not_interested)')
-      .order('created_at', { ascending: true });
+    const [{ data, error }] = await Promise.all([
+      client
+        .from('contacts')
+        .select('*')
+        .eq('assigned_to', profile.id)
+        .eq('dnc', false)
+        .not('status', 'in', '(joined_bni,not_interested)')
+        .order('created_at', { ascending: true }),
+      refreshTagsData(),
+    ]);
 
     if (error) {
       queueContainer.innerHTML = `<p class="empty-state">Couldn't load your queue: ${error.message}</p>`;
@@ -591,14 +659,17 @@
 
   async function loadFollowUpPool() {
     const followupContainer = document.getElementById('followup-container');
-    const { data, error } = await client
-      .from('contacts')
-      .select('*')
-      .eq('assigned_to', profile.id)
-      .eq('dnc', false)
-      .not('status', 'in', '(joined_bni,not_interested)')
-      .not('follow_up_date', 'is', null)
-      .order('follow_up_date', { ascending: true });
+    const [{ data, error }] = await Promise.all([
+      client
+        .from('contacts')
+        .select('*')
+        .eq('assigned_to', profile.id)
+        .eq('dnc', false)
+        .not('status', 'in', '(joined_bni,not_interested)')
+        .not('follow_up_date', 'is', null)
+        .order('follow_up_date', { ascending: true }),
+      refreshTagsData(),
+    ]);
 
     if (error) {
       followupContainer.innerHTML = `<p class="empty-state">Couldn't load your follow-up pool: ${error.message}</p>`;

@@ -18,6 +18,10 @@
   th.sortable:hover { color: var(--color-primary-dark); }
   th.sortable.sort-asc::after { content: " \25B2"; }
   th.sortable.sort-desc::after { content: " \25BC"; }
+  .contacts-table th, .contacts-table td { padding: 8px 8px; font-size: 0.83rem; }
+  .contacts-table tbody tr[data-row] { cursor: pointer; }
+  .contacts-table tbody tr[data-row]:hover { background: var(--color-bg-alt); }
+  .contacts-table .badge { font-size: 0.68rem; padding: 2px 8px; }
   .temperature-select { min-width: 78px; }
   .status-select { min-width: 145px; }
   .progress-wrap { margin-top: 10px; }
@@ -101,6 +105,17 @@
 
   <div class="tab-panel" data-panel="contacts">
     <div class="card">
+      <h2>Tags</h2>
+      <p class="hint" style="margin-top:-6px;">Attach these to a contact from its Edit panel, you and the caller can both apply them.</p>
+      <div id="tags-list"></div>
+      <form id="add-tag-form" style="display:flex; gap:8px; margin-top:12px;">
+        <input type="text" id="new-tag-name" placeholder="e.g. Interested" style="flex:1;">
+        <button type="submit" class="btn btn--accent btn--sm">Add</button>
+      </form>
+      <p class="error-msg" id="add-tag-error"></p>
+    </div>
+
+    <div class="card">
       <h2>Add a Contact</h2>
       <form id="add-contact-form" class="grid grid-2">
         <div class="form-group">
@@ -177,7 +192,7 @@
         <span class="hint" id="selected-count"></span>
       </div>
       <div class="table-wrap">
-        <table>
+        <table class="contacts-table">
           <thead><tr>
             <th><input type="checkbox" id="select-all-contacts"></th>
             <th class="sortable" data-sort="business_name">Business</th>
@@ -308,12 +323,13 @@
   // need all six representable, not_interested included.
   const STATUS_SORT_ORDER = ['uncontacted', 'no_answer', 'visit_scheduled', 'visit_attended', 'joined_bni', 'not_interested'];
   const TEMPERATURE_ORDER = ['cold', 'warm', 'hot'];
+  const TEMPERATURE_LABELS = { hot: 'Hot', warm: 'Warm', cold: 'Cold' };
   let contactsSortColumn = 'created_at';
   let contactsSortDirection = 'desc';
   const EDIT_FIELD_LABELS = {
     business_name: 'Business Name', contact_name: 'Contact Name', phone: 'Phone',
     email: 'Email', industry: 'Industry', mailing_address: 'Mailing Address',
-    notes: 'Notes', additional_info: 'Additional Info',
+    notes: 'Notes', additional_info: 'Additional Info', lead_temperature: 'Type', status: 'Status',
   };
   const ACTIVITY_LABELS = {
     contact_added: 'Added a contact', contact_edited: 'Edited a contact',
@@ -327,6 +343,21 @@
   };
 
   let client, profile, callers = [], currentContacts = [];
+  let allTags = [];
+  let contactTagMap = new Map();
+
+  async function refreshTagsData() {
+    const [{ data: tagsData }, { data: ctData }] = await Promise.all([
+      client.from('tags').select('*').order('name'),
+      client.from('contact_tags').select('*'),
+    ]);
+    allTags = tagsData || [];
+    contactTagMap = new Map();
+    (ctData || []).forEach((row) => {
+      if (!contactTagMap.has(row.contact_id)) contactTagMap.set(row.contact_id, new Set());
+      contactTagMap.get(row.contact_id).add(row.tag_id);
+    });
+  }
 
   // business_name is optional (some uploads are personal contacts with no
   // company attached) -- fall back to the person's name, or a plain
@@ -493,14 +524,72 @@
 
   async function loadContacts() {
     const tbody = document.getElementById('contacts-tbody');
-    const { data, error } = await client.from('contacts').select('*, creator:profiles!created_by(full_name), assignee:profiles!assigned_to(full_name)');
+    const [contactsResult] = await Promise.all([
+      client.from('contacts').select('*, creator:profiles!created_by(full_name), assignee:profiles!assigned_to(full_name)'),
+      refreshTagsData(),
+    ]);
+    const { data, error } = contactsResult;
     if (error) {
       tbody.innerHTML = `<tr><td colspan="10" class="empty-state">Couldn't load contacts: ${error.message}</td></tr>`;
       return;
     }
     currentContacts = data;
     renderContactsTable();
+    renderTagsManager();
   }
+
+  function tagBadgeClass(name) {
+    if (name === 'Interested') return 'badge--tag-interested';
+    if (name === 'Not Interested') return 'badge--tag-not-interested';
+    return 'badge--tag';
+  }
+
+  function tagBadgesHtml(contactId) {
+    const ids = contactTagMap.get(contactId);
+    if (!ids || !ids.size) return '';
+    return `<div class="tag-badges">${[...ids].map((tid) => {
+      const t = allTags.find((x) => x.id === tid);
+      return t ? `<span class="badge ${tagBadgeClass(t.name)}">${t.name}</span>` : '';
+    }).join('')}</div>`;
+  }
+
+  function renderTagsManager() {
+    const listEl = document.getElementById('tags-list');
+    if (!allTags.length) {
+      listEl.innerHTML = '<p class="empty-state">No tags yet. Add one below.</p>';
+      return;
+    }
+    listEl.innerHTML = allTags.map((t) => `
+      <span class="badge ${tagBadgeClass(t.name)}" style="margin:0 6px 6px 0;">
+        ${t.name} <span class="tag-remove-btn" data-id="${t.id}" data-name="${escapeAttr(t.name)}" role="button" aria-label="Remove tag" style="cursor:pointer; font-weight:700;">&times;</span>
+      </span>
+    `).join('');
+    listEl.querySelectorAll('.tag-remove-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (!confirm(`Remove the "${btn.dataset.name}" tag? This removes it from every contact that has it.`)) return;
+        await client.from('tags').delete().eq('id', btn.dataset.id);
+        await refreshTagsData();
+        renderTagsManager();
+        renderContactsTable();
+      });
+    });
+  }
+
+  document.getElementById('add-tag-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = document.getElementById('new-tag-name');
+    const errEl = document.getElementById('add-tag-error');
+    errEl.textContent = '';
+    const name = titleCase(input.value);
+    if (!name) { errEl.textContent = 'Enter a tag name.'; return; }
+
+    const { error } = await client.from('tags').insert({ name });
+    if (error) { errEl.textContent = error.message; return; }
+    input.value = '';
+    await refreshTagsData();
+    renderTagsManager();
+    renderContactsTable();
+  });
 
   function renderContactsTable() {
     const tbody = document.getElementById('contacts-tbody');
@@ -511,22 +600,20 @@
 
     const data = sortContactsArray(currentContacts);
     const statusOpts = (selected) => Object.entries(STATUS_LABELS).map(([v, l]) => `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('');
+    const tagPickerHtml = (c) => allTags.map((t) => `<span class="badge tag-toggle ${tagBadgeClass(t.name)} ${(contactTagMap.get(c.id) || new Set()).has(t.id) ? 'is-active' : ''}" data-tag-id="${t.id}">${t.name}</span>`).join('');
 
     tbody.innerHTML = data.map((c) => `
       <tr data-row="${c.id}">
         <td><input type="checkbox" class="contact-select" data-id="${c.id}"></td>
-        <td>${contactDisplayName(c)}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}</td>
+        <td>
+          ${contactDisplayName(c)}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}
+          ${tagBadgesHtml(c.id)}
+        </td>
         <td>${c.business_name ? (c.contact_name || '') : ''}</td>
         <td><a href="tel:${c.phone}">${c.phone}</a></td>
         <td>${c.industry || ''}</td>
-        <td>
-          <select class="temperature-select" data-id="${c.id}">
-            <option value="cold" ${c.lead_temperature === 'cold' ? 'selected' : ''}>Cold</option>
-            <option value="warm" ${c.lead_temperature === 'warm' ? 'selected' : ''}>Warm</option>
-            <option value="hot" ${c.lead_temperature === 'hot' ? 'selected' : ''}>Hot</option>
-          </select>
-        </td>
-        <td><select class="status-select" data-id="${c.id}">${statusOpts(c.status)}</select></td>
+        <td><span class="badge badge--${c.lead_temperature}">${TEMPERATURE_LABELS[c.lead_temperature] || c.lead_temperature}</span></td>
+        <td><span class="badge badge--status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span></td>
         <td style="white-space:nowrap;">${new Date(c.created_at).toLocaleDateString()}</td>
         <td style="white-space:nowrap;">${c.last_contacted_at ? new Date(c.last_contacted_at).toLocaleDateString() : 'Never'}</td>
         <td style="white-space:nowrap;">
@@ -563,6 +650,18 @@
               <label>Mailing Address</label>
               <input type="text" class="edit-field" data-id="${c.id}" data-field="mailing_address" value="${escapeAttr(c.mailing_address)}">
             </div>
+            <div class="form-group">
+              <label>Type</label>
+              <select class="edit-field" data-id="${c.id}" data-field="lead_temperature">
+                <option value="cold" ${c.lead_temperature === 'cold' ? 'selected' : ''}>Cold</option>
+                <option value="warm" ${c.lead_temperature === 'warm' ? 'selected' : ''}>Warm</option>
+                <option value="hot" ${c.lead_temperature === 'hot' ? 'selected' : ''}>Hot</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Status</label>
+              <select class="edit-field" data-id="${c.id}" data-field="status">${statusOpts(c.status)}</select>
+            </div>
             <div class="form-group" style="grid-column: 1 / -1;">
               <label>Notes</label>
               <textarea class="edit-field" data-id="${c.id}" data-field="notes" rows="2">${c.notes || ''}</textarea>
@@ -571,24 +670,16 @@
               <label>Additional Info</label>
               <textarea class="edit-field" data-id="${c.id}" data-field="additional_info" rows="2">${c.additional_info || ''}</textarea>
             </div>
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label>Tags</label>
+              <div class="tag-picker" data-id="${c.id}">${tagPickerHtml(c)}</div>
+            </div>
           </div>
           <p class="error-msg edit-error" data-error="${c.id}"></p>
           <div class="call-history" data-history="${c.id}"><p class="hint">Loading call history…</p></div>
         </td>
       </tr>
     `).join('');
-
-    tbody.querySelectorAll('.status-select').forEach((sel) => {
-      sel.addEventListener('change', async (e) => {
-        await client.from('contacts').update({ status: e.target.value }).eq('id', e.target.dataset.id);
-        loadDashboard();
-      });
-    });
-    tbody.querySelectorAll('.temperature-select').forEach((sel) => {
-      sel.addEventListener('change', async (e) => {
-        await client.from('contacts').update({ lead_temperature: e.target.value }).eq('id', e.target.dataset.id);
-      });
-    });
 
     // Refreshes just the static display cells for one row (Business, Name,
     // Phone, Industry, the Email action) from currentContacts, without
@@ -599,10 +690,12 @@
       const row = tbody.querySelector(`tr[data-row="${id}"]`);
       if (!c || !row) return;
       const cells = row.children;
-      cells[1].innerHTML = `${contactDisplayName(c)}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}`;
+      cells[1].innerHTML = `${contactDisplayName(c)}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}${tagBadgesHtml(c.id)}`;
       cells[2].textContent = c.business_name ? (c.contact_name || '') : '';
       cells[3].innerHTML = `<a href="tel:${c.phone}">${c.phone}</a>`;
       cells[4].textContent = c.industry || '';
+      cells[5].innerHTML = `<span class="badge badge--${c.lead_temperature}">${TEMPERATURE_LABELS[c.lead_temperature] || c.lead_temperature}</span>`;
+      cells[6].innerHTML = `<span class="badge badge--status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span>`;
       row.querySelector('.delete-contact').dataset.name = contactDisplayName(c);
       const actionsCell = cells[9];
       const emailLink = actionsCell.querySelector('a[href^="mailto:"]');
@@ -615,34 +708,37 @@
       }
     }
 
+    async function saveEditField(el) {
+      const id = el.dataset.id;
+      const field = el.dataset.field;
+      const errEl = tbody.querySelector(`.edit-error[data-error="${id}"]`);
+      const c = currentContacts.find((x) => x.id === id);
+      let newVal = el.value.trim();
+      if (field === 'industry') { newVal = titleCase(newVal); el.value = newVal; }
+      if (field === 'phone') { newVal = formatPhone(newVal); el.value = newVal; }
+      const oldVal = (c && c[field]) || '';
+      if (newVal === oldVal) return;
+
+      if (field === 'phone' && !newVal) {
+        errEl.textContent = 'Phone number cannot be blank.';
+        el.value = oldVal;
+        return;
+      }
+      errEl.textContent = '';
+
+      const { error } = await client.from('contacts').update({ [field]: newVal || null }).eq('id', id);
+      if (error) { errEl.textContent = error.message; return; }
+
+      if (c) c[field] = newVal || null;
+      refreshRowDisplay(id);
+      if (field === 'status') loadDashboard();
+      const label = EDIT_FIELD_LABELS[field] || field;
+      logActivity(client, profile.id, 'contact_edited', id, c ? contactDisplayName(c) : null,
+        `${label}: "${oldVal}" to "${newVal}"`);
+    }
+
     tbody.querySelectorAll('.edit-field').forEach((el) => {
-      el.addEventListener('blur', async () => {
-        const id = el.dataset.id;
-        const field = el.dataset.field;
-        const errEl = tbody.querySelector(`.edit-error[data-error="${id}"]`);
-        const c = currentContacts.find((x) => x.id === id);
-        let newVal = el.value.trim();
-        if (field === 'industry') { newVal = titleCase(newVal); el.value = newVal; }
-        if (field === 'phone') { newVal = formatPhone(newVal); el.value = newVal; }
-        const oldVal = (c && c[field]) || '';
-        if (newVal === oldVal) return;
-
-        if (field === 'phone' && !newVal) {
-          errEl.textContent = 'Phone number cannot be blank.';
-          el.value = oldVal;
-          return;
-        }
-        errEl.textContent = '';
-
-        const { error } = await client.from('contacts').update({ [field]: newVal || null }).eq('id', id);
-        if (error) { errEl.textContent = error.message; return; }
-
-        if (c) c[field] = newVal || null;
-        refreshRowDisplay(id);
-        const label = EDIT_FIELD_LABELS[field] || field;
-        logActivity(client, profile.id, 'contact_edited', id, c ? contactDisplayName(c) : null,
-          `${label}: "${oldVal}" to "${newVal}"`);
-      });
+      el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'blur', () => saveEditField(el));
     });
 
     tbody.querySelectorAll('.view-toggle').forEach((btn) => {
@@ -652,6 +748,38 @@
         row.style.display = showing ? 'none' : 'table-row';
         btn.textContent = showing ? 'Edit' : 'Close';
         if (!showing) loadCallHistory(btn.dataset.id, row.querySelector('.call-history'));
+      });
+    });
+
+    // Clicking anywhere on a contact's row opens the same Edit panel the
+    // button does, so you don't have to land precisely on a small button.
+    // Bails out for clicks on anything interactively its own thing
+    // (checkbox, phone/email links, the Edit/Delete buttons themselves) so
+    // those keep working normally instead of double-toggling.
+    tbody.querySelectorAll('tr[data-row]').forEach((row) => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('a, button, input, select, textarea, label')) return;
+        row.querySelector('.view-toggle').click();
+      });
+    });
+
+    tbody.querySelectorAll('.tag-toggle').forEach((el) => {
+      el.addEventListener('click', async () => {
+        const contactId = el.closest('.tag-picker').dataset.id;
+        const tagId = el.dataset.tagId;
+        const isActive = el.classList.contains('is-active');
+        if (isActive) {
+          await client.from('contact_tags').delete().eq('contact_id', contactId).eq('tag_id', tagId);
+          contactTagMap.get(contactId)?.delete(tagId);
+        } else {
+          await client.from('contact_tags').insert({ contact_id: contactId, tag_id: tagId });
+          if (!contactTagMap.has(contactId)) contactTagMap.set(contactId, new Set());
+          contactTagMap.get(contactId).add(tagId);
+        }
+        el.classList.toggle('is-active');
+        const row = tbody.querySelector(`tr[data-row="${contactId}"]`);
+        const c = currentContacts.find((x) => x.id === contactId);
+        if (row && c) row.children[1].innerHTML = `${contactDisplayName(c)}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}${tagBadgesHtml(contactId)}`;
       });
     });
 

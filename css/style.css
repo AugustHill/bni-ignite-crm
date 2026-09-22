@@ -146,12 +146,20 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 .badge--hot { background: var(--color-danger-bg); color: var(--color-danger); }
 .badge--warm { background: #fde4d2; color: #943c05; }
 .badge--cold { background: #dcebfa; color: #1c5f8c; }
+.badge--tag { background: #e6dcfb; color: #5a2fa8; }
+.badge--tag-interested { background: #dcf0e4; color: #1b6b4a; }
+.badge--tag-not-interested { background: var(--color-bg-alt); color: var(--color-text-muted); }
+.tag-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.tag-toggle { cursor: pointer; user-select: none; opacity: 0.35; border: 1px solid var(--color-border); margin: 0 6px 6px 0; }
+.tag-toggle.is-active { opacity: 1; border-color: transparent; }
 @media (prefers-color-scheme: dark) {
   .badge--status-no_answer { background: #1c3350; color: #a9c9f0; }
   .badge--status-visit_scheduled { background: #4a3a15; color: #f0cf8f; }
   .badge--status-visit_attended { background: #4a3116; color: #f0bd8f; }
   .badge--warm { background: #4a2f15; color: #f0a868; }
   .badge--cold { background: #1c3350; color: #a9c9f0; }
+  .badge--tag { background: #362250; color: #cbb2f0; }
+  .badge--tag-interested { background: #1a3527; color: #7fd4a8; }
 }
 
 table { width: 100%; border-collapse: collapse; }
