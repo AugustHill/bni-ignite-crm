@@ -331,16 +331,16 @@
 <script src="js/session.js"></script>
 <script>
   const STATUS_LABELS = {
-    uncontacted: 'Uncontacted', no_answer: 'No Answer',
+    uncontacted: 'Uncontacted', no_answer: 'No Answer', interested: 'Interested',
     visit_scheduled: 'Visit Scheduled', visit_attended: 'Visit Attended',
     joined_bni: 'Joined BNI', not_interested: 'Not Interested',
   };
   // Funnel progression only -- not_interested is a dead end, not "further
   // along" than the others, so it deliberately isn't part of this one.
-  const STATUS_ORDER = ['uncontacted', 'no_answer', 'visit_scheduled', 'visit_attended', 'joined_bni'];
+  const STATUS_ORDER = ['uncontacted', 'no_answer', 'interested', 'visit_scheduled', 'visit_attended', 'joined_bni'];
   // Display order for the Contacts table's Sort by Status, which does
-  // need all six representable, not_interested included.
-  const STATUS_SORT_ORDER = ['uncontacted', 'no_answer', 'visit_scheduled', 'visit_attended', 'joined_bni', 'not_interested'];
+  // need all seven representable, not_interested included.
+  const STATUS_SORT_ORDER = ['uncontacted', 'no_answer', 'interested', 'visit_scheduled', 'visit_attended', 'joined_bni', 'not_interested'];
   const TEMPERATURE_ORDER = ['cold', 'warm', 'hot'];
   const TEMPERATURE_LABELS = { hot: 'Hot', warm: 'Warm', cold: 'Cold' };
   let contactsSortColumn = 'created_at';
@@ -720,7 +720,7 @@
           ${tagBadgesHtml(c.id)}
         </td>
         <td>${c.business_name ? (c.contact_name || '') : ''}</td>
-        <td><a href="tel:${c.phone}">${c.phone}</a></td>
+        <td style="white-space:nowrap;"><a href="tel:${c.phone}">${c.phone}</a></td>
         <td>${c.industry || ''}</td>
         <td><span class="badge badge--${c.lead_temperature}">${TEMPERATURE_LABELS[c.lead_temperature] || c.lead_temperature}</span></td>
         <td><span class="badge badge--status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span></td>

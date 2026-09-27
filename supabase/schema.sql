@@ -76,8 +76,8 @@ create table if not exists contacts (
   lead_temperature text not null default 'cold' check (lead_temperature in ('hot', 'warm', 'cold')),
   notes text,
   status text not null default 'uncontacted' check (status in (
-    'uncontacted', 'no_answer', 'not_interested', 'visit_scheduled',
-    'visit_attended', 'joined_bni'
+    'uncontacted', 'no_answer', 'interested', 'not_interested',
+    'visit_scheduled', 'visit_attended', 'joined_bni'
   )),
   follow_up_date date,
   last_contacted_at timestamptz,
@@ -180,11 +180,8 @@ create policy "coordinator deletes call logs"
 -- and -- this is the DNC enforcement Derrick asked for -- the instant
 -- "dnc_requested" is logged, the contact is flagged and drops out of the
 -- caller's active queue (queue filtering happens in caller.html, keyed off
--- this same dnc flag). "reached_conversation" rolls up into no_answer for
--- status purposes -- the granular outcome is still preserved per-call here
--- in call_logs, this just means the aggregate status doesn't have a
--- dedicated bucket for "talked to them, nothing scheduled yet" since
--- Derrick's status list doesn't include one. contacts.follow_up_date always
+-- this same dnc flag). "reached_conversation" rolls up into "interested",
+-- talked to them, nothing scheduled yet. contacts.follow_up_date always
 -- mirrors the most recently logged call's follow_up_date (including back
 -- to null if the latest call didn't set one), so the Follow-Up Pool tab can
 -- query it directly instead of hunting through call_logs for the latest
@@ -198,7 +195,7 @@ begin
   update contacts set
     updated_at = now(),
     status = case new.outcome
-      when 'reached_conversation' then 'no_answer'
+      when 'reached_conversation' then 'interested'
       when 'not_interested' then 'not_interested'
       when 'dnc_requested' then 'not_interested'
       when 'accepted_invitation' then 'visit_scheduled'

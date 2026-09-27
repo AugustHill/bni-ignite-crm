@@ -183,6 +183,16 @@ database, neither touches existing data beyond tagging ownership:
   coordinator or the caller assigned to that contact. Many-to-many on
   purpose, a contact can carry more than one at once. Powers the Tags
   card on the Contacts tab and the tag picker in both apps' Edit panels.
+- `supabase/migration_022_interested_status.sql` — adds "Interested" as a
+  status, between No Answer and Visit Scheduled. Closes a gap flagged
+  back in migration_010: a "reached_conversation" call had no dedicated
+  bucket and got folded into No Answer as a compromise; the call-outcome
+  trigger now lands it on Interested instead, and existing contacts stuck
+  at No Answer from that old compromise are backfilled to Interested (one
+  already moved further along, or set deliberately by a coordinator, is
+  left alone). Note this is a different thing from the Interested *tag*
+  added in migration_021, a contact can have the status, the tag, both,
+  or neither.
 
 ## How the pieces fit together
 
