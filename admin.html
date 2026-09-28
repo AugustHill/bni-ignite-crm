@@ -24,6 +24,7 @@
   .tag-filter-chip { cursor: pointer; user-select: none; opacity: 0.35; border: 1px solid var(--color-border); }
   .tag-filter-chip.is-active { opacity: 1; border-color: transparent; }
   .contacts-table th, .contacts-table td { padding: 8px 8px; font-size: 0.83rem; }
+  .contacts-table th:first-child, .contacts-table td:first-child { width: 32px; color: var(--color-text-muted); }
   .contacts-table tbody tr[data-row] { cursor: pointer; }
   .contacts-table tbody tr[data-row]:hover { background: var(--color-bg-alt); }
   .contacts-table .badge { font-size: 0.68rem; padding: 2px 8px; }
@@ -98,6 +99,17 @@
         <div class="stat-card"><div class="stat-num" id="f-booked">–</div><div class="stat-label">Visit Scheduled</div></div>
         <div class="stat-card"><div class="stat-num" id="f-attended">–</div><div class="stat-label">Visit Attended</div></div>
         <div class="stat-card"><div class="stat-num" id="f-joined">–</div><div class="stat-label">Joined BNI</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Productivity &amp; Conversion</h2>
+      <p class="hint" style="margin-top:-6px;">All-time, same as the funnel above. Rates read "–" until there's enough data to divide by.</p>
+      <div class="grid grid-4">
+        <div class="stat-card"><div class="stat-num" id="m-calls-per-hour">–</div><div class="stat-label">Calls / Hour</div></div>
+        <div class="stat-card"><div class="stat-num" id="m-conv-per-hour">–</div><div class="stat-label">Conversations / Hour</div></div>
+        <div class="stat-card"><div class="stat-num" id="m-show-up-rate">–</div><div class="stat-label">Show-Up Rate</div></div>
+        <div class="stat-card"><div class="stat-num" id="m-close-rate">–</div><div class="stat-label">Close Rate</div></div>
+        <div class="stat-card"><div class="stat-num" id="m-dnc-rate">–</div><div class="stat-label">DNC Rate</div></div>
       </div>
     </div>
   </div>
@@ -203,6 +215,7 @@
       <div class="table-wrap">
         <table class="contacts-table">
           <thead><tr>
+            <th>#</th>
             <th><input type="checkbox" id="select-all-contacts"></th>
             <th class="sortable" data-sort="business_name">Business</th>
             <th>Name</th>
@@ -214,7 +227,7 @@
             <th class="sortable" data-sort="last_contacted_at">Last Called</th>
             <th></th>
           </tr></thead>
-          <tbody id="contacts-tbody"><tr><td colspan="10" class="empty-state">Loading…</td></tr></tbody>
+          <tbody id="contacts-tbody"><tr><td colspan="11" class="empty-state">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -371,6 +384,14 @@
   let client, profile, callers = [], currentContacts = [];
   let allTags = [];
   let contactTagMap = new Map();
+  // Permanent per-contact row numbers, in the order contacts were added.
+  // Computed once per load and never touched by sorting/filtering, so a
+  // contact keeps its number no matter how the table is currently sorted.
+  let contactSequenceMap = new Map();
+  function computeContactSequence() {
+    const byCreated = [...currentContacts].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    contactSequenceMap = new Map(byCreated.map((c, i) => [c.id, i + 1]));
+  }
 
   async function refreshTagsData() {
     const [{ data: tagsData }, { data: ctData }] = await Promise.all([
@@ -432,30 +453,49 @@
   // ---------- Dashboard ----------
   async function loadDashboard() {
     const goalContainer = document.getElementById('goal-container');
-    const [{ data: goal }, { data: contacts }, { data: logs }] = await Promise.all([
+    const [{ data: goal }, { data: contacts }, { data: logs }, { data: hours }] = await Promise.all([
       client.from('gps_goal').select('*').eq('id', 1).maybeSingle(),
       client.from('contacts').select('status'),
       client.from('call_logs').select('outcome'),
+      client.from('hours_log').select('hours'),
     ]);
 
     const c = contacts || [];
     const l = logs || [];
+    const totalHours = (hours || []).reduce((sum, row) => sum + Number(row.hours), 0);
     const atOrPast = (status) => c.filter((x) => STATUS_ORDER.indexOf(x.status) >= STATUS_ORDER.indexOf(status)).length;
 
-    document.getElementById('f-calls').textContent = l.length;
+    const totalCalls = l.length;
+    const totalConversations = l.filter((x) => x.outcome === 'reached_conversation').length;
+    const totalDnc = l.filter((x) => x.outcome === 'dnc_requested').length;
+    const scheduled = atOrPast('visit_scheduled');
+    const attended = atOrPast('visit_attended');
+    const joinedCount = atOrPast('joined_bni');
+
+    document.getElementById('f-calls').textContent = totalCalls;
     document.getElementById('f-voicemail').textContent = l.filter((x) => x.outcome === 'left_voicemail').length;
-    document.getElementById('f-conversations').textContent = l.filter((x) => x.outcome === 'reached_conversation').length;
+    document.getElementById('f-conversations').textContent = totalConversations;
     document.getElementById('f-invited').textContent = l.filter((x) => x.outcome === 'accepted_invitation').length;
-    document.getElementById('f-booked').textContent = atOrPast('visit_scheduled');
-    document.getElementById('f-attended').textContent = atOrPast('visit_attended');
-    document.getElementById('f-joined').textContent = atOrPast('joined_bni');
+    document.getElementById('f-booked').textContent = scheduled;
+    document.getElementById('f-attended').textContent = attended;
+    document.getElementById('f-joined').textContent = joinedCount;
+
+    // Productivity & Conversion -- "–" rather than a divide-by-zero result
+    // when there's not yet enough data (no hours logged, or nobody's
+    // reached that funnel stage yet).
+    const perHour = (num, hrs) => (hrs > 0 ? (num / hrs).toFixed(1) : '–');
+    const rate = (num, den) => (den > 0 ? `${Math.round((num / den) * 100)}%` : '–');
+    document.getElementById('m-calls-per-hour').textContent = perHour(totalCalls, totalHours);
+    document.getElementById('m-conv-per-hour').textContent = perHour(totalConversations, totalHours);
+    document.getElementById('m-show-up-rate').textContent = rate(attended, scheduled);
+    document.getElementById('m-close-rate').textContent = rate(joinedCount, attended);
+    document.getElementById('m-dnc-rate').textContent = rate(totalDnc, totalCalls);
 
     if (!goal) {
       goalContainer.innerHTML = '<p class="empty-state">No goal set yet. Run the gps_goal insert from schema.sql.</p>';
       return;
     }
-    const joined = atOrPast('joined_bni');
-    const current = goal.starting_number + joined;
+    const current = goal.starting_number + joinedCount;
     const span = goal.target_number - goal.starting_number;
     const pct = span > 0 ? Math.min(100, Math.max(0, Math.round(((current - goal.starting_number) / span) * 100))) : 0;
     const daysLeft = Math.ceil((new Date(goal.target_date) - new Date()) / 86400000);
@@ -604,10 +644,11 @@
     ]);
     const { data, error } = contactsResult;
     if (error) {
-      tbody.innerHTML = `<tr><td colspan="10" class="empty-state">Couldn't load contacts: ${error.message}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="11" class="empty-state">Couldn't load contacts: ${error.message}</td></tr>`;
       return;
     }
     currentContacts = data;
+    computeContactSequence();
     renderContactsTable();
     renderTagsManager();
     renderContactsTagFilter();
@@ -689,7 +730,7 @@
   function renderContactsTable() {
     const tbody = document.getElementById('contacts-tbody');
     if (!currentContacts.length) {
-      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No contacts yet. Add one above.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No contacts yet. Add one above.</td></tr>';
       return;
     }
 
@@ -704,7 +745,7 @@
       });
     }
     if (!filtered.length) {
-      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No contacts match your search or tag filter.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" class="empty-state">No contacts match your search or tag filter.</td></tr>';
       return;
     }
 
@@ -714,6 +755,7 @@
 
     tbody.innerHTML = data.map((c) => `
       <tr data-row="${c.id}">
+        <td>${contactSequenceMap.get(c.id) || ''}</td>
         <td><input type="checkbox" class="contact-select" data-id="${c.id}"></td>
         <td>
           ${contactDisplayName(c)}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}
@@ -733,7 +775,7 @@
         </td>
       </tr>
       <tr class="detail-row" data-detail="${c.id}" style="display:none;">
-        <td colspan="10">
+        <td colspan="11">
           <p class="hint" style="margin-top:0;">Added by ${c.creator ? c.creator.full_name : 'Unknown'} on ${new Date(c.created_at).toLocaleString()}. Edits save automatically as you leave each field.</p>
           <div class="grid grid-2">
             <div class="form-group">
@@ -800,14 +842,14 @@
       const row = tbody.querySelector(`tr[data-row="${id}"]`);
       if (!c || !row) return;
       const cells = row.children;
-      cells[1].innerHTML = `${contactDisplayName(c)}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}${tagBadgesHtml(c.id)}`;
-      cells[2].textContent = c.business_name ? (c.contact_name || '') : '';
-      cells[3].innerHTML = `<a href="tel:${c.phone}">${c.phone}</a>`;
-      cells[4].textContent = c.industry || '';
-      cells[5].innerHTML = `<span class="badge badge--${c.lead_temperature}">${TEMPERATURE_LABELS[c.lead_temperature] || c.lead_temperature}</span>`;
-      cells[6].innerHTML = `<span class="badge badge--status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span>`;
+      cells[2].innerHTML = `${contactDisplayName(c)}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}${tagBadgesHtml(c.id)}`;
+      cells[3].textContent = c.business_name ? (c.contact_name || '') : '';
+      cells[4].innerHTML = `<a href="tel:${c.phone}">${c.phone}</a>`;
+      cells[5].textContent = c.industry || '';
+      cells[6].innerHTML = `<span class="badge badge--${c.lead_temperature}">${TEMPERATURE_LABELS[c.lead_temperature] || c.lead_temperature}</span>`;
+      cells[7].innerHTML = `<span class="badge badge--status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span>`;
       row.querySelector('.delete-contact').dataset.name = contactDisplayName(c);
-      const actionsCell = cells[9];
+      const actionsCell = cells[10];
       const emailBtn = actionsCell.querySelector('.email-invite-btn');
       if (c.email && !emailBtn) {
         actionsCell.querySelector('.delete-contact').insertAdjacentHTML('beforebegin', `<button type="button" class="btn btn--outline btn--sm email-invite-btn" data-id="${c.id}">Email</button>`);
@@ -887,7 +929,7 @@
         el.classList.toggle('is-active');
         const row = tbody.querySelector(`tr[data-row="${contactId}"]`);
         const c = currentContacts.find((x) => x.id === contactId);
-        if (row && c) row.children[1].innerHTML = `${contactDisplayName(c)}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}${tagBadgesHtml(contactId)}`;
+        if (row && c) row.children[2].innerHTML = `${contactDisplayName(c)}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}${tagBadgesHtml(contactId)}`;
       });
     });
 

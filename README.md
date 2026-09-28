@@ -255,7 +255,18 @@ database, neither touches existing data beyond tagging ownership:
   name search box and tag filter chips (both client-side, combine with
   each other and with sorting), and the page itself runs wider than
   everywhere else in the app (1500px, other pages stay at 1100px) since
-  this table has a lot to show at once.
+  this table has a lot to show at once. The leftmost column is a
+  permanent row number, assigned once from creation order and cached in
+  `contactSequenceMap`, so it never changes when the table is sorted or
+  filtered differently, only when a contact is added (gets the next
+  number) or deleted (later numbers shift down to fill the gap).
+  - The Dashboard's Calling Funnel is joined by a Productivity &
+    Conversion card: Calls/Hour and Conversations/Hour (both divide
+    all-time totals by hours logged in hours_log), Show-Up Rate (Visit
+    Attended over Visit Scheduled), Close Rate (Joined BNI over Visit
+    Attended), and DNC Rate (dnc_requested calls over total calls). Any
+    rate shows "–" instead of dividing by zero when there's not enough
+    data yet.
   - A contact's Email button opens a choice: a blank email, or the
     meeting-invite template. The template fills in a fixed script
     (thank-you copy, BNI terminology, the KW Palm Harbor address) and a
