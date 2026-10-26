@@ -68,6 +68,7 @@
   <div class="tabs">
     <button class="tab-btn is-active" data-tab="dashboard">Dashboard</button>
     <button class="tab-btn" data-tab="contacts">Contacts</button>
+    <button class="tab-btn" data-tab="visitors">Visitors</button>
     <button class="tab-btn" data-tab="dnc">DNC List</button>
     <button class="tab-btn" data-tab="hours">Hours &amp; Pay</button>
     <button class="tab-btn" data-tab="team">Team</button>
@@ -297,6 +298,35 @@
     </div>
   </div>
 
+  <div class="tab-panel" data-panel="visitors">
+    <div class="card">
+      <h2>Visitors</h2>
+      <p class="hint" style="margin-top:-6px;">Everyone registered to visit, and for which Wednesday. After a meeting, mark each one Attended (sends them a thank-you) or No-show (puts them in the caller's No-Show pool).</p>
+      <div class="contacts-toolbar">
+        <div class="form-group">
+          <label for="visitors-filter">Show</label>
+          <select id="visitors-filter">
+            <option value="open">Upcoming and needing attendance</option>
+            <option value="all">Everyone</option>
+            <option value="registered">Registered</option>
+            <option value="attended">Attended</option>
+            <option value="no_show">No-shows</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <button type="button" class="btn btn--accent" id="register-guest-admin-btn">Register a Guest</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="contacts-table">
+          <thead><tr><th>Wednesday</th><th>Visitor</th><th>Company</th><th>Status</th><th>Registered by</th><th>Emails</th><th></th></tr></thead>
+          <tbody id="visitors-tbody"><tr><td colspan="7" class="empty-state">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div class="tab-panel" data-panel="activity">
     <div class="card">
       <h2>Caller Activity</h2>
@@ -342,6 +372,7 @@
 <script src="js/supabase-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/session.js"></script>
+<script src="js/visits.js"></script>
 <script>
   const STATUS_LABELS = {
     uncontacted: 'Uncontacted', no_answer: 'No Answer', interested: 'Interested',
@@ -373,6 +404,8 @@
   const ACTIVITY_LABELS = {
     contact_added: 'Added a contact', contact_edited: 'Edited a contact',
     call_logged: 'Logged a call', email_clicked: 'Clicked Email',
+    visitor_registered: 'Registered a visitor', visit_changed: 'Changed a visit date',
+    visit_cancelled: 'Cancelled a visit',
   };
   const OUTCOME_LABELS = {
     no_answer: 'No answer', left_voicemail: 'Left a voicemail',
@@ -435,6 +468,7 @@
       if (btn.dataset.tab === 'hours') loadHoursPay();
       if (btn.dataset.tab === 'team') loadTeam();
       if (btn.dataset.tab === 'activity') loadActivity();
+      if (btn.dataset.tab === 'visitors') loadVisitors();
     });
   });
 
@@ -828,6 +862,8 @@
             </div>
           </div>
           <p class="error-msg edit-error" data-error="${c.id}"></p>
+          <p class="hint" style="margin:14px 0 6px;"><strong>Visitor registration</strong></p>
+          <div class="visit-box" data-visit="${c.id}"><p class="hint">Loading…</p></div>
           <div class="call-history" data-history="${c.id}"><p class="hint">Loading call history…</p></div>
         </td>
       </tr>
@@ -897,7 +933,10 @@
         const showing = row.style.display !== 'none';
         row.style.display = showing ? 'none' : 'table-row';
         btn.textContent = showing ? 'Edit' : 'Close';
-        if (!showing) loadCallHistory(btn.dataset.id, row.querySelector('.call-history'));
+        if (!showing) {
+          loadCallHistory(btn.dataset.id, row.querySelector('.call-history'));
+          loadContactVisit(btn.dataset.id);
+        }
       });
     });
 
@@ -1659,6 +1698,125 @@
   }
 
   // ---------- Team ----------
+  // ---------- Visitors ----------
+  let visitorRows = [];
+
+  // Refreshes whatever visitor views are on screen after a change.
+  function visitsChanged() {
+    loadVisitors();
+    loadDashboard();
+    document.querySelectorAll('.visit-box').forEach((box) => {
+      if (box.closest('.detail-row').style.display !== 'none') loadContactVisit(box.dataset.visit);
+    });
+  }
+
+  const labelOfContact = (c) => (c ? (c.business_name || c.contact_name || '(no name)') : null);
+
+  async function loadVisitors() {
+    const tbody = document.getElementById('visitors-tbody');
+    const { data, error } = await client
+      .from('visit_registrations')
+      .select('*, emails:visit_emails(kind,status,error,created_at)')
+      .order('meeting_date', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (error) {
+      tbody.innerHTML = `<tr><td colspan="7" class="empty-state">Couldn't load visitors: ${error.message}. If this mentions a missing table, the latest database update (migration 023) hasn't been run yet.</td></tr>`;
+      return;
+    }
+    visitorRows = data || [];
+    renderVisitors();
+  }
+
+  function renderVisitors() {
+    const tbody = document.getElementById('visitors-tbody');
+    const filter = document.getElementById('visitors-filter').value;
+    const today = new Date();
+    const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const rows = visitorRows.filter((r) => {
+      if (filter === 'all') return true;
+      if (filter === 'open') return r.status === 'registered';
+      return r.status === filter;
+    });
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Nobody here yet.</td></tr>';
+      return;
+    }
+    const statusLabel = { registered: 'Registered', attended: 'Attended', no_show: 'No-show', cancelled: 'Cancelled' };
+    const statusClass = { registered: 'badge--status-visit_scheduled', attended: 'badge--status-joined_bni', no_show: 'badge--dnc', cancelled: 'badge--status-not_interested' };
+    tbody.innerHTML = rows.map((r) => {
+      const past = r.status === 'registered' && r.meeting_date < todayIso;
+      const actions = r.status === 'registered'
+        ? `<button type="button" class="btn btn--outline btn--sm visitor-act" data-act="attended" data-id="${r.id}">Attended</button>
+           <button type="button" class="btn btn--outline btn--sm visitor-act" data-act="no_show" data-id="${r.id}">No-show</button>
+           <button type="button" class="btn btn--outline btn--sm visitor-act" data-act="change" data-id="${r.id}">Change date</button>
+           <button type="button" class="btn btn--danger btn--sm visitor-act" data-act="cancel" data-id="${r.id}">Cancel</button>`
+        : '';
+      return `<tr>
+        <td style="white-space:nowrap;">${Visits.fmtDate(r.meeting_date)}${r.previous_meeting_date ? `<div class="hint" style="margin:0;">moved from ${Visits.fmtDate(r.previous_meeting_date)}</div>` : ''}</td>
+        <td>${Visits.esc(r.first_name)}${r.last_name ? ' ' + Visits.esc(r.last_name) : ''}<div class="hint" style="margin:0;">${Visits.esc(r.email)}${r.phone ? ' | ' + Visits.esc(r.phone) : ''}</div></td>
+        <td>${Visits.esc(r.company)}${r.category ? `<div class="hint" style="margin:0;">${Visits.esc(r.category)}</div>` : ''}</td>
+        <td><span class="badge ${statusClass[r.status]}">${statusLabel[r.status]}</span>${past ? '<div class="hint" style="margin:2px 0 0;color:var(--color-danger);">Needs attendance marked</div>' : ''}</td>
+        <td>${Visits.esc(r.registered_by_name)}</td>
+        <td>${Visits.emailChipsHtml(r.emails, r.id)}</td>
+        <td style="white-space:normal;">${actions}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('visitors-filter').addEventListener('change', renderVisitors);
+
+  document.getElementById('register-guest-admin-btn').addEventListener('click', () => {
+    Visits.register({ client, profile, callers, onChanged: visitsChanged });
+  });
+
+  document.getElementById('visitors-tbody').addEventListener('click', async (e) => {
+    const resendBtn = e.target.closest('.visit-resend-btn');
+    if (resendBtn) {
+      Visits.resend({ client, registrationId: resendBtn.dataset.reg, kind: resendBtn.dataset.kind, onChanged: visitsChanged });
+      return;
+    }
+    const actBtn = e.target.closest('.visitor-act');
+    if (!actBtn) return;
+    const reg = visitorRows.find((r) => r.id === actBtn.dataset.id);
+    if (!reg) return;
+    const contact = currentContacts.find((c) => c.id === reg.contact_id);
+    const label = labelOfContact(contact) || reg.company || reg.first_name;
+    const act = actBtn.dataset.act;
+    if (act === 'attended' || act === 'no_show') Visits.setAttendance({ client, profile, registration: reg, label, status: act, onChanged: visitsChanged });
+    else if (act === 'change') Visits.changeDate({ client, profile, registration: reg, label, onChanged: visitsChanged });
+    else if (act === 'cancel') Visits.cancel({ client, profile, registration: reg, label, onChanged: visitsChanged });
+  });
+
+  // The visit section inside a contact's Edit panel: their active
+  // registration (with Change date / Cancel), or a Register Visitor button.
+  async function loadContactVisit(contactId) {
+    const box = document.querySelector(`.visit-box[data-visit="${contactId}"]`);
+    if (!box) return;
+    const { data, error } = await client.from('visit_registrations').select('*').eq('contact_id', contactId).order('meeting_date', { ascending: false });
+    if (error) { box.innerHTML = '<p class="hint">Visitor registration isn\'t available yet (the latest database update needs to be run).</p>'; return; }
+    const active = (data || []).find((r) => r.status === 'registered');
+    const last = (data || [])[0];
+    const contact = currentContacts.find((c) => c.id === contactId);
+    let html = '';
+    if (active) {
+      html = `<p style="margin:0 0 8px;">Registered for <strong>${Visits.fmtDate(active.meeting_date)}</strong>
+        <button type="button" class="btn btn--outline btn--sm" data-visit-act="change">Change date</button>
+        <button type="button" class="btn btn--danger btn--sm" data-visit-act="cancel">Cancel</button></p>`;
+    } else {
+      html = `<p style="margin:0 0 8px;">${last ? `Last visit: ${Visits.fmtDate(last.meeting_date)} (${last.status.replace('_', '-')}). ` : 'Not registered to visit. '}
+        <button type="button" class="btn btn--primary btn--sm" data-visit-act="register">Register Visitor</button></p>`;
+    }
+    box.innerHTML = html;
+    box.querySelectorAll('[data-visit-act]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const act = btn.dataset.visitAct;
+        if (act === 'register') Visits.register({ client, profile, contact, callers, onChanged: visitsChanged });
+        if (act === 'change') Visits.changeDate({ client, profile, registration: active, label: labelOfContact(contact), onChanged: visitsChanged });
+        if (act === 'cancel') Visits.cancel({ client, profile, registration: active, label: labelOfContact(contact), onChanged: visitsChanged });
+      });
+    });
+  }
+
   // ---------- Activity ----------
   // Watches the caller specifically, not every login -- filtered
   // client-side since Supabase's embedded-resource filters don't cleanly

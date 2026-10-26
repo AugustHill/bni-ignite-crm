@@ -12,7 +12,7 @@
   .contact-card h3 { margin: 0 0 4px; font-size: 1.05rem; }
   .contact-meta { font-size: 0.85rem; color: var(--color-text-muted); margin: 0; }
   .contact-meta a { color: var(--color-primary); font-weight: 600; text-decoration: none; }
-  .contact-badges { display: flex; gap: 6px; align-items: center; }
+  .contact-badges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
   .log-form, .edit-form { display: none; margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--color-border); }
   .log-form.is-open, .edit-form.is-open { display: block; }
   .hours-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
@@ -52,16 +52,17 @@
 
   <div class="card">
     <h2>Registering a Visitor</h2>
-    <p class="hint" style="margin-top:-6px;">Before you hang up with someone who says yes, get all of this, you'll need it on the Add Visitor form:</p>
+    <p class="hint" style="margin-top:-6px;">Before you hang up with someone who says yes, get all of this:</p>
     <ul style="margin:0 0 14px; padding-left:20px; font-size:0.9rem; line-height:1.9;">
       <li>First and last name</li>
       <li>Company name</li>
       <li>Phone number</li>
       <li>Email address</li>
       <li>Their category (their profession/industry, BNI only allows one per category per chapter)</li>
-      <li>Which meeting date they're coming to</li>
+      <li>Which Wednesday they're coming to</li>
     </ul>
-    <a class="btn btn--accent btn--sm" href="https://www.bniconnectglobal.com/web/open/tokenator?concept=connect&token=lENmWAy7v2tcagdzGIVbXovW1C0YkFwk6D4cnOvLoj3zYcbbgqENq3pR7M3wiPZqgi9jnfxvyGgSLD3OqVeUXUUZB%2BJtAymKNDf76iCSfzRFYmKhoMUkExGIR%2BkX03TJ3iHikyY5hLMH6wrhptAgHaNMUAnCewdiPWzpFaofPI4%3D" target="_blank" rel="noopener noreferrer">Add Visitor</a>
+    <p class="hint">Then click <strong>Register Visitor</strong> on their card below (or the button here if they aren't in your list yet). Pick the Wednesday, confirm their details, and a welcome email with the time, location, and what to expect goes out to them automatically.</p>
+    <button type="button" class="btn btn--accent btn--sm" id="register-guest-btn">Register a Guest</button>
   </div>
 
   <div class="grid grid-4" id="stat-row">
@@ -123,6 +124,7 @@
     <div class="tabs">
       <button type="button" class="tab-btn is-active" data-tab="queue">Your Queue</button>
       <button type="button" class="tab-btn" data-tab="followup">Follow-Up Pool</button>
+      <button type="button" class="tab-btn" data-tab="noshow">No-Show Pool</button>
     </div>
     <div class="tab-panel is-active" data-panel="queue">
       <div class="queue-toolbar">
@@ -144,6 +146,10 @@
     <div class="tab-panel" data-panel="followup">
       <p class="hint" style="margin-top:0;">Anyone with a follow-up date set from a logged call, soonest due first. Overdue ones are marked.</p>
       <div id="followup-container"><p class="empty-state">Loading…</p></div>
+    </div>
+    <div class="tab-panel" data-panel="noshow">
+      <p class="hint" style="margin-top:0;">Visitors who were registered but didn't come. Reach out to see if they'd like to try another Wednesday: <strong>Register Visitor</strong> books them again, <strong>Done following up</strong> clears them from this list.</p>
+      <div id="noshow-container"><p class="empty-state">Loading…</p></div>
     </div>
   </div>
 
@@ -194,6 +200,7 @@
 <script src="js/supabase-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/session.js"></script>
+<script src="js/visits.js"></script>
 <script>
   const OUTCOME_LABELS = {
     no_answer: 'No answer',
@@ -301,6 +308,47 @@
     });
   }
 
+  // Visitor registrations for her contacts (row-level security only returns
+  // hers). visitInfo: contactId -> { active, missed }, where active is the
+  // contact's 'registered' row and missed is their latest registration when
+  // that was a no-show nobody has followed up on yet. If the database update
+  // hasn't been run, this quietly treats it as "no registrations".
+  let visitInfo = new Map();
+  async function refreshVisitData() {
+    const next = new Map();
+    const { data, error } = await client.from('visit_registrations').select('*').order('meeting_date', { ascending: false });
+    if (error || !data) { visitInfo = next; return; }
+    const latest = new Map();
+    data.forEach((r) => {
+      if (r.status === 'registered') next.set(r.contact_id, { ...(next.get(r.contact_id) || {}), active: r });
+      const cur = latest.get(r.contact_id);
+      if (!cur || r.meeting_date > cur.meeting_date || (r.meeting_date === cur.meeting_date && r.created_at > cur.created_at)) latest.set(r.contact_id, r);
+    });
+    latest.forEach((r, contactId) => {
+      if (r.status === 'no_show' && !r.followed_up_at) next.set(contactId, { ...(next.get(contactId) || {}), missed: r });
+    });
+    visitInfo = next;
+  }
+
+  function visitLineHtml(c) {
+    const info = visitInfo.get(c.id) || {};
+    if (info.active) {
+      return `<p class="visit-line">Registered for ${Visits.fmtDate(info.active.meeting_date)}
+        <button type="button" class="link-btn visit-change-btn" data-id="${c.id}">Change date</button>
+        <button type="button" class="link-btn visit-cancel-btn" data-id="${c.id}">Cancel</button></p>`;
+    }
+    if (info.missed) {
+      return `<p class="visit-line visit-line--missed">Missed their visit on ${Visits.fmtDate(info.missed.meeting_date)}
+        <button type="button" class="link-btn visit-done-btn" data-id="${c.id}">Done following up</button></p>`;
+    }
+    return '';
+  }
+
+  function registerBtnHtml(c) {
+    if ((visitInfo.get(c.id) || {}).active) return '';
+    return `<button type="button" class="btn btn--primary btn--sm register-visit-btn" data-id="${c.id}">Register Visitor</button>`;
+  }
+
   function tagBadgeClass(name) {
     if (name === 'Interested') return 'badge--tag-interested';
     if (name === 'Not Interested') return 'badge--tag-not-interested';
@@ -326,11 +374,13 @@
             <p class="contact-meta">${c.business_name && c.contact_name ? c.contact_name + ' · ' : ''}<a href="tel:${c.phone}">${c.phone}</a>${c.industry ? ' · ' + c.industry : ''}</p>
             ${c.follow_up_date ? `<p class="followup-date${overdue ? ' is-overdue' : ''}">Follow up: ${c.follow_up_date}${overdue ? ' (overdue)' : ''}</p>` : ''}
             ${tagBadgesHtml(c.id)}
+            ${visitLineHtml(c)}
           </div>
           <div class="contact-badges">
             <span class="badge badge--${c.lead_temperature}">${TEMPERATURE_LABELS[c.lead_temperature] || c.lead_temperature}</span>
             <span class="badge badge--status-${c.status}">${STATUS_LABELS[c.status] || c.status}</span>
             ${c.email ? `<button type="button" class="btn btn--outline btn--sm email-invite-btn" data-id="${c.id}">Email</button>` : ''}
+            ${registerBtnHtml(c)}
             <button type="button" class="btn btn--outline btn--sm edit-toggle">Edit</button>
             <button type="button" class="btn btn--accent btn--sm log-toggle">Log a call</button>
           </div>
@@ -394,7 +444,8 @@
           </div>
           <div class="banner log-visitor-reminder" style="display:none;">
             <span>📝</span>
-            <span>Get their <strong>first/last name, company, phone, email, and category</strong> before you finish this call, then use the Add Visitor button up top.</span>
+            <span>Get their <strong>first/last name, company, phone, email, and category</strong> before you finish this call, then register them for a Wednesday.</span>
+            ${registerBtnHtml(c)}
           </div>
           <div class="form-group">
             <label>Notes</label>
@@ -577,6 +628,7 @@
         // a contact into or out of either list, so refresh both.
         loadQueue();
         loadFollowUpPool();
+        loadNoShowPool();
         loadStats();
       });
     });
@@ -687,6 +739,7 @@
         .not('status', 'in', '(joined_bni,not_interested)')
         .order('created_at', { ascending: true }),
       refreshTagsData(),
+      refreshVisitData(),
     ]);
 
     if (error) {
@@ -717,6 +770,7 @@
         .not('follow_up_date', 'is', null)
         .order('follow_up_date', { ascending: true }),
       refreshTagsData(),
+      refreshVisitData(),
     ]);
 
     if (error) {
@@ -732,6 +786,74 @@
     followupContainer.innerHTML = data.map(contactCardHtml).join('');
     wireContactCards(followupContainer);
   }
+
+  async function loadNoShowPool() {
+    const container = document.getElementById('noshow-container');
+    await Promise.all([refreshTagsData(), refreshVisitData()]);
+    const missedIds = [...visitInfo.entries()].filter(([, v]) => v.missed).map(([id]) => id);
+    const empty = '<p class="empty-state">No no-shows to follow up with right now.</p>';
+    if (!missedIds.length) { container.innerHTML = empty; return; }
+
+    const { data, error } = await client
+      .from('contacts')
+      .select('*')
+      .in('id', missedIds)
+      .eq('assigned_to', profile.id)
+      .eq('dnc', false)
+      .not('status', 'in', '(joined_bni,not_interested)');
+    if (error) {
+      container.innerHTML = `<p class="empty-state">Couldn't load the no-show pool: ${error.message}</p>`;
+      return;
+    }
+    if (!data.length) { container.innerHTML = empty; return; }
+
+    data.sort((a, b) => visitInfo.get(b.id).missed.meeting_date.localeCompare(visitInfo.get(a.id).missed.meeting_date));
+    data.forEach((c) => contactsById.set(c.id, c));
+    container.innerHTML = data.map(contactCardHtml).join('');
+    wireContactCards(container);
+  }
+
+  // Visitor buttons live inside cards that get re-rendered constantly, so
+  // one listener on the document (registered once) handles all of them.
+  function reloadAllLists() {
+    loadQueue();
+    loadFollowUpPool();
+    loadNoShowPool();
+  }
+  const labelOf = (c) => (c ? (c.business_name || c.contact_name || '(no name)') : null);
+
+  document.addEventListener('click', async (e) => {
+    if (e.target.closest('#register-guest-btn')) {
+      Visits.register({ client, profile, onChanged: reloadAllLists });
+      return;
+    }
+    const registerBtn = e.target.closest('.register-visit-btn');
+    if (registerBtn) {
+      const c = contactsById.get(registerBtn.dataset.id);
+      if (c) Visits.register({ client, profile, contact: c, onChanged: reloadAllLists });
+      return;
+    }
+    const changeBtn = e.target.closest('.visit-change-btn');
+    if (changeBtn) {
+      const info = visitInfo.get(changeBtn.dataset.id);
+      if (info && info.active) Visits.changeDate({ client, profile, registration: info.active, label: labelOf(contactsById.get(changeBtn.dataset.id)), onChanged: reloadAllLists });
+      return;
+    }
+    const cancelBtn = e.target.closest('.visit-cancel-btn');
+    if (cancelBtn) {
+      const info = visitInfo.get(cancelBtn.dataset.id);
+      if (info && info.active) Visits.cancel({ client, profile, registration: info.active, label: labelOf(contactsById.get(cancelBtn.dataset.id)), onChanged: reloadAllLists });
+      return;
+    }
+    const doneBtn = e.target.closest('.visit-done-btn');
+    if (doneBtn) {
+      const info = visitInfo.get(doneBtn.dataset.id);
+      if (!info || !info.missed) return;
+      const { error } = await client.from('visit_registrations').update({ followed_up_at: new Date().toISOString() }).eq('id', info.missed.id);
+      if (error) { Visits.toast(error.message, 'error'); return; }
+      reloadAllLists();
+    }
+  });
 
   async function loadHours() {
     const { data, error } = await client
@@ -852,6 +974,7 @@
       document.getElementById('hours-date').valueAsDate = new Date();
       loadQueue();
       loadFollowUpPool();
+      loadNoShowPool();
       loadOpenCategories();
       loadStats();
       loadHours();

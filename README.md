@@ -85,6 +85,38 @@ of chat):
 After adding those, a redeploy is needed for them to take effect — tell me
 once they're set and I'll trigger one.
 
+### 2b. Visitor emails (one-time setup)
+
+Registering a guest sends them a real email automatically (welcome, date
+change, cancellation, day-before reminder, thank-you). The emails go out
+from a Gmail account made just for this (bniigniteinvite@gmail.com) through
+a small Google Apps Script that acts as a mail relay, because a plain Gmail
+address can't send through the usual email services and there is no
+company domain to verify. Nothing in the app stores that Gmail password.
+
+1. Sign in to Gmail as bniigniteinvite@gmail.com, then open
+   script.google.com and create a **New project**.
+2. Delete the starter code and paste in the contents of
+   `apps-script/mail-relay.gs`.
+3. Project Settings (gear icon) → **Script properties** → Add script
+   property: name `RELAY_SECRET`, value any long random string you make up
+   (it is a shared password between the script and the site).
+4. Deploy → **New deployment** → type **Web app** → Execute as **Me**, Who
+   has access **Anyone** → Deploy. Approve the Gmail permission prompt
+   (Advanced → Go to project) the first time. Copy the **Web app URL**.
+5. Netlify → Site configuration → Environment variables → add
+   `MAIL_RELAY_URL` (the Web app URL) and `MAIL_RELAY_SECRET` (the same
+   string from step 3).
+6. Redeploy the site so the new variables load.
+
+The day-before reminder is a scheduled Netlify function
+(`netlify/functions/visit-reminders.js`, configured in `netlify.toml`). It
+runs Tuesday mornings at 10am Eastern (9am in winter) and emails everyone
+registered for the next day's Wednesday meeting who has not been reminded
+yet. Anyone registered in the 12 hours before that run, or after it, gets
+no separate reminder, their welcome email already covers it. A free Gmail account can send about 100 emails a
+day through Apps Script, far more than this needs.
+
 ### 3. Catching up an already-running install
 
 Run these once each, in order, in the SQL Editor — both are safe on a live
@@ -193,6 +225,14 @@ database, neither touches existing data beyond tagging ownership:
   left alone). Note this is a different thing from the Interested *tag*
   added in migration_021, a contact can have the status, the tag, both,
   or neither.
+- `supabase/migration_023_visit_registrations.sql`: adds
+  `visit_registrations` (who is registered to visit, for which Wednesday,
+  and whether they attended, no-showed, or cancelled; a database check
+  rejects any date that is not a Wednesday, and a partial unique index
+  allows only one active registration per contact) and `visit_emails`, an
+  append-only log of every email sent for a registration (written only by
+  the Netlify functions, never by the browser). Coordinators manage all of
+  it, a caller sees and manages only visitors for her own contacts.
 
 ## How the pieces fit together
 
@@ -228,6 +268,20 @@ database, neither touches existing data beyond tagging ownership:
   applied tags show on the card itself. Her Email button has the same
   meeting-invite template choice admin.html has, calendar-picked
   Wednesday, fixed 7:30 AM and address.
+  She registers visitors from here too (needs migration 023 and the
+  visitor email setup above): a Register Visitor button on every contact
+  card, and a Register a Guest button for someone who is not in the list
+  yet (which creates the contact, assigned to her). She picks the
+  Wednesday on the same calendar popup, confirms the visitor's details
+  (prefilled from the contact), and the welcome email goes out on its own
+  with the meeting details, a Google Calendar button, a calendar file, and
+  a short explanation of BNI. A registered contact shows "Registered for
+  Wednesday, ..." on the card with Change date and Cancel, each of which
+  emails the visitor too (the cancellation asks if they would like to
+  reschedule). A third tab, No-Show Pool, lists contacts whose last
+  registration was a no-show and nobody has followed up yet, with a Done
+  following up button. The Visit Scheduled and Visit Attended statuses are
+  set for her by these actions.
 - **`admin.html`** — Dashboard (calling funnel, progress toward the
   35-member goal, and a Categories We're Recruiting For list you manage
   directly, add/remove, shown to the caller with a fire icon), Contacts
@@ -238,6 +292,14 @@ database, neither touches existing data beyond tagging ownership:
   caller or administrator with a real working login on the spot), and
   **Activity**, a rolling log of what the caller has done (contacts
   added/edited, calls logged, Email links clicked), most recent first.
+  A **Visitors** tab lists every registration (upcoming, attended,
+  no-show, cancelled) with the Wednesday, who registered them, and which
+  emails went out (a failed one shows a Send again link). Attendance is
+  not tracked anywhere else, so after each meeting mark every visitor
+  Attended (moves the contact to Visit Attended and sends the thank-you)
+  or No-show (puts them in the caller's No-Show Pool). Past registrations
+  not yet marked are flagged. A contact's Edit panel also shows its
+  registration with Change date / Cancel, or a Register Visitor button.
   The owner sees an extra **Private** button in the header that no one
   else gets. A contact's call history (in its Edit panel) is editable
   and deletable from here too, for fixing a mistake or clearing out test

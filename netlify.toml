@@ -6,3 +6,8 @@
   from = "/api/create-user"
   to = "/.netlify/functions/create-user"
   status = 200
+
+# Day-before reminder emails to registered visitors. Netlify cron is in UTC:
+# 14:00 UTC on Tuesdays is 10:00 AM Eastern in summer, 9:00 AM in winter.
+[functions."visit-reminders"]
+  schedule = "0 14 * * 2"
