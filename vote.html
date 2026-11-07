@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Which Professions Should We Recruit Next? | BNI Ignite</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .vote-card { max-width: 560px; margin: 40px auto; background: var(--color-card); padding: 32px; border-radius: var(--radius); box-shadow: var(--shadow-md); border: 1px solid var(--color-border); }
+  .vote-card h1 { font-family: var(--font-heading); font-size: 1.45rem; margin: 0 0 10px; }
+  .vote-card p { line-height: 1.5; }
+  .vote-rules { background: var(--color-bg-alt); border-radius: 8px; padding: 12px 16px 12px 32px; margin: 14px 0 22px; font-size: 0.9rem; }
+  .vote-rules li { margin: 4px 0; }
+  .vote-row { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 12px; }
+  .vote-row .form-group { margin: 0; }
+  .vote-row .vote-prof { flex: 1; min-width: 0; }
+  .vote-row .vote-amt { width: 120px; flex: none; }
+  .vote-row .vote-amt .vote-dollar { position: relative; }
+  .vote-row .vote-amt .vote-dollar span { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--color-text-muted); pointer-events: none; }
+  .vote-row .vote-amt input { padding-left: 22px; }
+  .vote-summary { background: var(--color-bg-alt); border-radius: 8px; padding: 12px 16px; margin: 16px 0; }
+  .vote-summary div { padding: 3px 0; }
+  @media (max-width: 520px) {
+    .vote-card { margin: 16px; padding: 22px; }
+    .vote-row { flex-wrap: wrap; }
+    .vote-row .vote-prof { flex-basis: 100%; }
+    .vote-row .vote-amt { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="vote-card" id="vote-card">
+  <p class="eyebrow">BNI Ignite</p>
+  <h1>Which professions should we recruit next?</h1>
+  <div id="vote-body"><p class="hint">Loading…</p></div>
+</div>
+
+<script>
+  (function () {
+    const body = document.getElementById('vote-body');
+    const ENDPOINT = '/.netlify/functions/profession-vote';
+
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const money = (n) => '$' + Number(n).toLocaleString('en-US');
+
+    function showMessage(text) {
+      body.innerHTML = `<p>${esc(text)}</p>`;
+    }
+
+    async function load() {
+      let data;
+      try {
+        const response = await fetch(ENDPOINT, { cache: 'no-store' });
+        data = await response.json();
+        if (!response.ok) { showMessage(data.error || "This form isn't available right now."); return; }
+      } catch (err) {
+        showMessage("This form couldn't load. Please check your connection and try again.");
+        return;
+      }
+      if (!data.open) { showMessage('Voting is closed. Thank you for your interest.'); return; }
+      if (!data.members.length) { showMessage("This form isn't ready yet. Please check back soon."); return; }
+      renderForm(data.members);
+    }
+
+    function renderForm(members) {
+      const rows = [1, 2, 3].map((n) => `
+        <div class="vote-row">
+          <div class="form-group vote-prof">
+            <label for="prof-${n}">${n === 1 ? 'First choice' : n === 2 ? 'Second choice' : 'Third choice'}${n === 1 ? '' : ' (optional)'}</label>
+            <input type="text" id="prof-${n}" maxlength="80" autocomplete="off" placeholder="${n === 1 ? 'e.g. Landscaper' : ''}">
+          </div>
+          <div class="form-group vote-amt">
+            <label for="amt-${n}">Your pledge</label>
+            <div class="vote-dollar"><span>$</span><input type="number" id="amt-${n}" min="0" max="100000" step="1" inputmode="numeric" placeholder="0"></div>
+          </div>
+        </div>`).join('');
+
+      body.innerHTML = `
+        <p>Tell us the professions you most want to see join our chapter, and how much you'd be willing to contribute toward recruiting each one.</p>
+        <ul class="vote-rules">
+          <li>Your pledge is a promise, collected only if and when someone in that profession joins the chapter.</li>
+          <li>Everyone is welcome to share ideas, but only professions with money pledged count toward the ranking. A pledge of $0 is recorded but doesn't count.</li>
+          <li>You can submit one time, so take a moment to get it right.</li>
+        </ul>
+        <form id="vote-form" novalidate>
+          <div class="form-group">
+            <label for="vote-name">Your name</label>
+            <select id="vote-name"><option value="">Choose your name…</option>${members.map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select>
+          </div>
+          ${rows}
+          <button type="submit" class="btn btn--primary" id="vote-submit" style="width:100%; margin-top:6px;">Submit My Picks</button>
+          <p class="error-msg" id="vote-error"></p>
+        </form>`;
+      document.getElementById('vote-form').addEventListener('submit', onSubmit);
+    }
+
+    function readForm() {
+      const pledges = [];
+      for (const n of [1, 2, 3]) {
+        const profession = document.getElementById(`prof-${n}`).value.replace(/\s+/g, ' ').trim();
+        const amount = document.getElementById(`amt-${n}`).value.trim();
+        if (profession || amount) pledges.push({ profession, amount, n });
+      }
+      return pledges;
+    }
+
+    async function onSubmit(e) {
+      e.preventDefault();
+      const errEl = document.getElementById('vote-error');
+      errEl.textContent = '';
+      const select = document.getElementById('vote-name');
+      if (!select.value) { errEl.textContent = 'Choose your name from the list.'; return; }
+
+      const pledges = readForm();
+      if (!pledges.length) { errEl.textContent = 'Enter at least one profession.'; return; }
+      for (const p of pledges) {
+        if (!p.profession) { errEl.textContent = 'You entered a dollar amount without a profession. Add the profession or clear the amount.'; return; }
+        if (p.amount === '') { errEl.textContent = `Enter a dollar amount for "${p.profession}". Use 0 if you don't want to pledge.`; return; }
+      }
+
+      const name = select.options[select.selectedIndex].text;
+      const summary = pledges.map((p) => `${p.profession}: ${money(Number(p.amount) || 0)}`).join('\n');
+      if (!window.confirm(`Submit these as ${name}? You can only submit once.\n\n${summary}`)) return;
+
+      const btn = document.getElementById('vote-submit');
+      btn.disabled = true;
+      btn.textContent = 'Submitting…';
+      try {
+        const response = await fetch(ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ member_id: select.value, pledges: pledges.map(({ profession, amount }) => ({ profession, amount })) }),
+        });
+        let data = {};
+        try { data = await response.json(); } catch (err) { /* handled below */ }
+        if (!response.ok || !data.ok) {
+          errEl.textContent = data.error || 'Something went wrong. Please try again.';
+          btn.disabled = false;
+          btn.textContent = 'Submit My Picks';
+          return;
+        }
+        body.innerHTML = `
+          <p><strong>Thank you, ${esc(data.name)}.</strong> Your picks have been recorded:</p>
+          <div class="vote-summary">${data.pledges.map((p) => `<div>${esc(p.profession)}: <strong>${money(p.amount)}</strong></div>`).join('')}</div>
+          <p class="hint">You're all set. You can close this page.</p>`;
+      } catch (err) {
+        errEl.textContent = "That didn't go through. Please check your connection and try again.";
+        btn.disabled = false;
+        btn.textContent = 'Submit My Picks';
+      }
+    }
+
+    load();
+  })();
+</script>
+</body>
+</html>

@@ -73,6 +73,7 @@
     <button class="tab-btn" data-tab="hours">Hours &amp; Pay</button>
     <button class="tab-btn" data-tab="team">Team</button>
     <button class="tab-btn" data-tab="activity">Activity</button>
+    <button class="tab-btn" data-tab="vote" id="vote-tab-btn" style="display:none;">Profession Vote</button>
   </div>
 
   <div class="tab-panel is-active" data-panel="dashboard">
@@ -327,6 +328,10 @@
     </div>
   </div>
 
+  <div class="tab-panel" data-panel="vote">
+    <div id="vote-root"><p class="empty-state">Loading…</p></div>
+  </div>
+
   <div class="tab-panel" data-panel="activity">
     <div class="card">
       <h2>Caller Activity</h2>
@@ -373,6 +378,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/session.js"></script>
 <script src="js/visits.js"></script>
+<script src="js/vote-admin.js"></script>
 <script>
   const STATUS_LABELS = {
     uncontacted: 'Uncontacted', no_answer: 'No Answer', interested: 'Interested',
@@ -469,6 +475,10 @@
       if (btn.dataset.tab === 'team') loadTeam();
       if (btn.dataset.tab === 'activity') loadActivity();
       if (btn.dataset.tab === 'visitors') loadVisitors();
+      if (btn.dataset.tab === 'vote') {
+        VoteAdmin.init(client, document.getElementById('vote-root'));
+        VoteAdmin.load();
+      }
     });
   });
 
@@ -1959,7 +1969,10 @@
       client = result.client;
       profile = result.profile;
       document.getElementById('welcome-line').textContent = `Welcome back, ${profile.full_name}.`;
-      if (profile.role === 'owner') document.getElementById('private-link').style.display = 'inline-flex';
+      if (profile.role === 'owner') {
+        document.getElementById('private-link').style.display = 'inline-flex';
+        document.getElementById('vote-tab-btn').style.display = '';
+      }
       initPresence(client, profile);
       await loadCallers();
       loadDashboard();

@@ -233,6 +233,11 @@ database, neither touches existing data beyond tagging ownership:
   append-only log of every email sent for a registration (written only by
   the Netlify functions, never by the browser). Coordinators manage all of
   it, a caller sees and manages only visitors for her own contacts.
+- `supabase/migration_024_profession_vote.sql`: adds the profession vote
+  tables (`vote_members` roster, `vote_submissions`, `vote_pledges`, and a
+  one-row `vote_settings` open/closed switch). Owner-only policies, there
+  is deliberately nothing readable by anonymous visitors: the public form
+  goes through the `profession-vote` Netlify function instead.
 
 ## How the pieces fit together
 
@@ -350,6 +355,24 @@ database, neither touches existing data beyond tagging ownership:
     After mapping there's a preview, an assign-to-caller step, and a
     duplicate-phone check (against both the file itself and existing
     contacts) before the final import.
+- **`vote.html`** (public, no login, not linked from anywhere): the
+  profession vote form. One shared link, each chapter member picks their
+  name from the roster dropdown and enters up to three professions with a
+  whole-dollar pledge for each (a pledge is a promise, collected only if
+  someone in that profession is recruited). One submission per member,
+  enforced in the database. It talks only to
+  `netlify/functions/profession-vote.js`, which checks the roster, the
+  open/closed switch, and the amounts before saving.
+  The owner's **Profession Vote** tab in `admin.html` (hidden from
+  everyone else, `js/vote-admin.js`) ranks professions by total dollars
+  pledged. $0 entries are recorded but never ranked, spellings are grouped
+  ignoring capitalization and punctuation, and a Combine button merges
+  look-alikes ("Plumber" and "Plumbing") by setting `group_name` on those
+  pledges (Ungroup undoes it). The tab also shows who has and hasn't
+  submitted, lets the owner delete a submission so that member can redo
+  it, holds the roster (paste names one per line), and has the
+  open/closed switch. The email asking members to vote is sent by the
+  owner from his own mail client, the app sends nothing for this.
 - **`private.html`** — owner-only (enforced by RLS, not just a hidden
   button): a to-do list, a link to the owner's own role-based GPS plan,
   and a list of additional private GPS plans (create/delete here, each
