@@ -370,7 +370,8 @@ database, neither touches existing data beyond tagging ownership:
   look-alikes ("Plumber" and "Plumbing") by setting `group_name` on those
   pledges (Ungroup undoes it). The tab also shows who has and hasn't
   submitted, lets the owner delete a submission so that member can redo
-  it, holds the roster (paste names one per line), and has the
+  it, delete one profession's entries (inside its Details), or clear all
+  results at once (roster and open/closed setting stay), holds the roster (paste names one per line), and has the
   open/closed switch. The email asking members to vote is sent by the
   owner from his own mail client, the app sends nothing for this.
 - **`private.html`** — owner-only (enforced by RLS, not just a hidden

@@ -141,7 +141,9 @@
         <button type="button" class="btn btn--outline btn--sm" data-vote-act="combine" data-key="${esc(g.key)}">Combine</button>
       </div>` : '';
 
-    return main + `<tr class="vote-detail-row"><td></td><td colspan="4">${lines}${combine}</td></tr>`;
+    const remove = `<div class="vote-combine"><button type="button" class="btn btn--danger btn--sm" data-vote-act="delete-group" data-key="${esc(g.key)}">Delete this profession</button><span class="hint" style="margin:0;">Removes these ${g.entries.length} entr${g.entries.length === 1 ? 'y' : 'ies'} from the results. Members' other picks stay.</span></div>`;
+
+    return main + `<tr class="vote-detail-row"><td></td><td colspan="4">${lines}${combine}${remove}</td></tr>`;
   }
 
   function amountNote(e) {
@@ -177,6 +179,7 @@
           <span><strong>${results.voted.length}</strong> of <strong>${state.members.length}</strong> members have submitted</span>
           <button type="button" class="btn btn--outline btn--sm" data-vote-act="toggle-open">${state.isOpen ? 'Close voting' : 'Reopen voting'}</button>
           <button type="button" class="btn btn--outline btn--sm" data-vote-act="refresh">Refresh</button>
+          <button type="button" class="btn btn--danger btn--sm" data-vote-act="clear-all" ${state.submissions.length ? '' : 'disabled'}>Clear all results</button>
         </div>
         <div class="form-group" style="margin-top:12px;">
           <label for="vote-link">Form link to send to members</label>
@@ -277,6 +280,22 @@
       if (!window.confirm(`Delete ${btn.dataset.name}'s submission? They will be able to submit again.`)) return;
       const { error } = await client.from('vote_submissions').delete().eq('id', btn.dataset.id);
       if (error) return fail(error.message);
+      await load();
+    } else if (act === 'clear-all') {
+      const ids = state.submissions.map((s) => s.id);
+      if (!ids.length) return;
+      if (!window.confirm(`Delete ALL results? This removes all ${ids.length} submission(s) and every pledge, and everyone can submit again. The member roster stays. This cannot be undone.`)) return;
+      const { error } = await client.from('vote_submissions').delete().in('id', ids);
+      if (error) return fail(error.message);
+      state.expanded.clear();
+      await load();
+    } else if (act === 'delete-group') {
+      const group = state.results.ranked.concat(state.results.unranked).find((g) => g.key === btn.dataset.key);
+      if (!group) return;
+      if (!window.confirm(`Delete "${group.label}" from the results? This removes ${group.entries.length} entr${group.entries.length === 1 ? 'y' : 'ies'} (${money(group.total)} pledged). Members' other picks stay. This cannot be undone.`)) return;
+      const { error } = await client.from('vote_pledges').delete().in('id', group.entries.map((x) => x.id));
+      if (error) return fail(error.message);
+      state.expanded.delete(group.key);
       await load();
     } else if (act === 'ungroup') {
       const { error } = await client.from('vote_pledges').update({ group_name: null }).eq('id', btn.dataset.id);
