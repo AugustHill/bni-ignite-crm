@@ -125,6 +125,7 @@
       <button type="button" class="tab-btn is-active" data-tab="queue">Your Queue</button>
       <button type="button" class="tab-btn" data-tab="followup">Follow-Up Pool</button>
       <button type="button" class="tab-btn" data-tab="noshow">No-Show Pool</button>
+      <button type="button" class="tab-btn" data-tab="seats">Chapter Seats</button>
     </div>
     <div class="tab-panel is-active" data-panel="queue">
       <div class="queue-toolbar">
@@ -135,6 +136,7 @@
         <div class="form-group">
           <label for="queue-sort">Sort by</label>
           <select id="queue-sort">
+            <option value="seats">Open seats first</option>
             <option value="name">Name (A-Z)</option>
             <option value="temperature">Lead Type (Hot first)</option>
             <option value="status">Status (Uncontacted first)</option>
@@ -150,6 +152,10 @@
     <div class="tab-panel" data-panel="noshow">
       <p class="hint" style="margin-top:0;">Visitors who were registered but didn't come. Reach out to see if they'd like to try another Wednesday: <strong>Register Visitor</strong> books them again, <strong>Done following up</strong> clears them from this list.</p>
       <div id="noshow-container"><p class="empty-state">Loading…</p></div>
+    </div>
+    <div class="tab-panel" data-panel="seats">
+      <p class="hint" style="margin-top:0;">Who is in the chapter and which category (seat) each one holds. If a prospect looks like a seat that's already taken, their card shows a "Seat may be taken" warning. Check before inviting them.</p>
+      <div id="seats-container"><p class="empty-state">Loading…</p></div>
     </div>
   </div>
 
@@ -200,6 +206,7 @@
 <script src="js/supabase-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/session.js"></script>
+<script src="js/seats.js"></script>
 <script src="js/visits.js"></script>
 <script>
   const OUTCOME_LABELS = {
@@ -213,10 +220,10 @@
   };
   const STATUS_LABELS = {
     uncontacted: 'Uncontacted', no_answer: 'No Answer', interested: 'Interested',
-    visit_scheduled: 'Visit Scheduled', visit_attended: 'Visit Attended',
+    visit_scheduled: 'Visit Scheduled', visit_attended: 'Visit Attended', applied: 'Applied',
     joined_bni: 'Joined BNI', not_interested: 'Not Interested',
   };
-  const STATUS_ORDER = ['uncontacted', 'no_answer', 'interested', 'visit_scheduled', 'visit_attended', 'joined_bni'];
+  const STATUS_ORDER = ['uncontacted', 'no_answer', 'interested', 'visit_scheduled', 'visit_attended', 'applied', 'joined_bni'];
   const TEMPERATURE_LABELS = { hot: 'Hot', warm: 'Warm', cold: 'Cold' };
   const TEMPERATURE_ORDER = ['hot', 'warm', 'cold'];
   const EDIT_FIELD_LABELS = {
@@ -226,6 +233,27 @@
   };
 
   let client, profile;
+  let seatData = { members: [], open: [] };
+
+  // The seat directory tab, and a fresh copy of the seat data after changes.
+  async function loadSeats() {
+    seatData = await Seats.load(client);
+    const container = document.getElementById('seats-container');
+    container.innerHTML = seatData.error
+      ? `<p class="empty-state">Couldn't load the chapter seats: ${Seats.esc(seatData.error)}</p>`
+      : Seats.directoryHtml(seatData);
+  }
+
+  // "Open seat" / "Seat may be taken" pill on a prospect's card (not for people who've already joined or said no).
+  function seatBadgeHtml(c) {
+    if (c.status === 'joined_bni' || c.status === 'not_interested') return '';
+    const badge = Seats.badgeHtml(Seats.match(c.industry, seatData));
+    return badge ? `<div class="seat-line">${badge}</div>` : '';
+  }
+  const seatRank = (c) => {
+    const m = Seats.match(c.industry, seatData);
+    return !m ? 1 : (m.type === 'open' ? 0 : 2);
+  };
   const queueContainer = document.getElementById('queue-container');
   const hoursTbody = document.getElementById('hours-tbody');
 
@@ -374,6 +402,7 @@
             <p class="contact-meta">${c.business_name && c.contact_name ? c.contact_name + ' · ' : ''}<a href="tel:${c.phone}">${c.phone}</a>${c.industry ? ' · ' + c.industry : ''}</p>
             ${c.follow_up_date ? `<p class="followup-date${overdue ? ' is-overdue' : ''}">Follow up: ${c.follow_up_date}${overdue ? ' (overdue)' : ''}</p>` : ''}
             ${tagBadgesHtml(c.id)}
+            ${seatBadgeHtml(c)}
             ${visitLineHtml(c)}
           </div>
           <div class="contact-badges">
@@ -646,7 +675,11 @@
 
   function sortContacts(data, mode) {
     const arr = [...data];
-    if (mode === 'temperature') {
+    const byName = (a, b) => (a.business_name || a.contact_name || '').localeCompare(b.business_name || b.contact_name || '');
+    if (mode === 'seats') {
+      // Open seats first, ordinary prospects next, possible taken seats last; hot leads first within each.
+      arr.sort((a, b) => seatRank(a) - seatRank(b) || TEMPERATURE_ORDER.indexOf(a.lead_temperature) - TEMPERATURE_ORDER.indexOf(b.lead_temperature) || byName(a, b));
+    } else if (mode === 'temperature') {
       arr.sort((a, b) => TEMPERATURE_ORDER.indexOf(a.lead_temperature) - TEMPERATURE_ORDER.indexOf(b.lead_temperature));
     } else if (mode === 'status') {
       arr.sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status));
@@ -824,13 +857,13 @@
 
   document.addEventListener('click', async (e) => {
     if (e.target.closest('#register-guest-btn')) {
-      Visits.register({ client, profile, onChanged: reloadAllLists });
+      Visits.register({ client, profile, seats: seatData, onChanged: reloadAllLists });
       return;
     }
     const registerBtn = e.target.closest('.register-visit-btn');
     if (registerBtn) {
       const c = contactsById.get(registerBtn.dataset.id);
-      if (c) Visits.register({ client, profile, contact: c, onChanged: reloadAllLists });
+      if (c) Visits.register({ client, profile, contact: c, seats: seatData, onChanged: reloadAllLists });
       return;
     }
     const changeBtn = e.target.closest('.visit-change-btn');
@@ -945,6 +978,7 @@
     const card = document.getElementById('open-categories-card');
     const listEl = document.getElementById('open-categories-list');
     const { data, error } = await client.from('open_categories').select('*').order('sort_order').order('created_at');
+    seatData.open = error || !data ? [] : data;
     if (error || !data || !data.length) {
       card.style.display = 'none';
       return;
@@ -972,6 +1006,7 @@
       document.getElementById('welcome-line').textContent = `Welcome back, ${profile.full_name}.`;
       initPresence(client, profile);
       document.getElementById('hours-date').valueAsDate = new Date();
+      await loadSeats();
       loadQueue();
       loadFollowUpPool();
       loadNoShowPool();

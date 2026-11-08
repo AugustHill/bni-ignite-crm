@@ -57,6 +57,7 @@
       <p class="subtitle" id="welcome-line">&nbsp;</p>
     </div>
     <div class="header-actions">
+      <a class="btn btn--accent btn--sm" href="checkin.html">Check-In</a>
       <a class="btn btn--outline btn--sm" href="scripts.html">Script Book</a>
       <a class="btn btn--outline btn--sm" href="gps-plan.html">Your GPS Plan</a>
       <a class="btn btn--accent btn--sm" href="private.html" id="private-link" style="display:none;">Private</a>
@@ -69,6 +70,7 @@
     <button class="tab-btn is-active" data-tab="dashboard">Dashboard</button>
     <button class="tab-btn" data-tab="contacts">Contacts</button>
     <button class="tab-btn" data-tab="visitors">Visitors</button>
+    <button class="tab-btn" data-tab="members">Members</button>
     <button class="tab-btn" data-tab="dnc">DNC List</button>
     <button class="tab-btn" data-tab="hours">Hours &amp; Pay</button>
     <button class="tab-btn" data-tab="team">Team</button>
@@ -100,6 +102,7 @@
         <div class="stat-card"><div class="stat-num" id="f-invited">–</div><div class="stat-label">Invitations Accepted</div></div>
         <div class="stat-card"><div class="stat-num" id="f-booked">–</div><div class="stat-label">Visit Scheduled</div></div>
         <div class="stat-card"><div class="stat-num" id="f-attended">–</div><div class="stat-label">Visit Attended</div></div>
+        <div class="stat-card"><div class="stat-num" id="f-applied">–</div><div class="stat-label">Applied</div></div>
         <div class="stat-card"><div class="stat-num" id="f-joined">–</div><div class="stat-label">Joined BNI</div></div>
       </div>
     </div>
@@ -328,6 +331,10 @@
     </div>
   </div>
 
+  <div class="tab-panel" data-panel="members">
+    <div id="members-root"><p class="empty-state">Loading…</p></div>
+  </div>
+
   <div class="tab-panel" data-panel="vote">
     <div id="vote-root"><p class="empty-state">Loading…</p></div>
   </div>
@@ -377,20 +384,23 @@
 <script src="js/supabase-config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/session.js"></script>
+<script src="js/seats.js"></script>
+<script src="js/pace.js"></script>
+<script src="js/members-admin.js"></script>
 <script src="js/visits.js"></script>
 <script src="js/vote-admin.js"></script>
 <script>
   const STATUS_LABELS = {
     uncontacted: 'Uncontacted', no_answer: 'No Answer', interested: 'Interested',
-    visit_scheduled: 'Visit Scheduled', visit_attended: 'Visit Attended',
+    visit_scheduled: 'Visit Scheduled', visit_attended: 'Visit Attended', applied: 'Applied',
     joined_bni: 'Joined BNI', not_interested: 'Not Interested',
   };
   // Funnel progression only -- not_interested is a dead end, not "further
   // along" than the others, so it deliberately isn't part of this one.
-  const STATUS_ORDER = ['uncontacted', 'no_answer', 'interested', 'visit_scheduled', 'visit_attended', 'joined_bni'];
+  const STATUS_ORDER = ['uncontacted', 'no_answer', 'interested', 'visit_scheduled', 'visit_attended', 'applied', 'joined_bni'];
   // Display order for the Contacts table's Sort by Status, which does
   // need all seven representable, not_interested included.
-  const STATUS_SORT_ORDER = ['uncontacted', 'no_answer', 'interested', 'visit_scheduled', 'visit_attended', 'joined_bni', 'not_interested'];
+  const STATUS_SORT_ORDER = ['uncontacted', 'no_answer', 'interested', 'visit_scheduled', 'visit_attended', 'applied', 'joined_bni', 'not_interested'];
   const TEMPERATURE_ORDER = ['cold', 'warm', 'hot'];
   const TEMPERATURE_LABELS = { hot: 'Hot', warm: 'Warm', cold: 'Cold' };
   let contactsSortColumn = 'created_at';
@@ -411,7 +421,7 @@
     contact_added: 'Added a contact', contact_edited: 'Edited a contact',
     call_logged: 'Logged a call', email_clicked: 'Clicked Email',
     visitor_registered: 'Registered a visitor', visit_changed: 'Changed a visit date',
-    visit_cancelled: 'Cancelled a visit',
+    visit_cancelled: 'Cancelled a visit', application_started: 'Marked as applied',
   };
   const OUTCOME_LABELS = {
     no_answer: 'No answer', left_voicemail: 'Left a voicemail',
@@ -421,6 +431,13 @@
   };
 
   let client, profile, callers = [], currentContacts = [];
+  let seatData = { members: [], open: [] };
+  // "Seat may be taken" / "Open seat" pill for a prospect (not for people who've already joined or said no).
+  function seatBadgeHtml(c) {
+    if (c.status === 'joined_bni' || c.status === 'not_interested') return '';
+    const badge = Seats.badgeHtml(Seats.match(c.industry, seatData));
+    return badge ? `<div class="seat-line">${badge}</div>` : '';
+  }
   let allTags = [];
   let contactTagMap = new Map();
   // Permanent per-contact row numbers, in the order contacts were added.
@@ -475,6 +492,10 @@
       if (btn.dataset.tab === 'team') loadTeam();
       if (btn.dataset.tab === 'activity') loadActivity();
       if (btn.dataset.tab === 'visitors') loadVisitors();
+      if (btn.dataset.tab === 'members') {
+        MembersAdmin.init(client, document.getElementById('members-root'), (d) => { seatData = d; });
+        MembersAdmin.load();
+      }
       if (btn.dataset.tab === 'vote') {
         VoteAdmin.init(client, document.getElementById('vote-root'));
         VoteAdmin.load();
@@ -497,11 +518,14 @@
   // ---------- Dashboard ----------
   async function loadDashboard() {
     const goalContainer = document.getElementById('goal-container');
-    const [{ data: goal }, { data: contacts }, { data: logs }, { data: hours }] = await Promise.all([
+    const fourWeeksAgo = new Date(Date.now() - 28 * 86400000).toISOString().slice(0, 10);
+    const [{ data: goal }, { data: contacts }, { data: logs }, { data: hours }, memberResult, recentResult] = await Promise.all([
       client.from('gps_goal').select('*').eq('id', 1).maybeSingle(),
       client.from('contacts').select('status'),
       client.from('call_logs').select('outcome'),
       client.from('hours_log').select('hours'),
+      client.from('vote_members').select('id', { count: 'exact', head: true }),
+      client.from('visit_registrations').select('id').eq('status', 'attended').gte('meeting_date', fourWeeksAgo),
     ]);
 
     const c = contacts || [];
@@ -522,6 +546,7 @@
     document.getElementById('f-invited').textContent = l.filter((x) => x.outcome === 'accepted_invitation').length;
     document.getElementById('f-booked').textContent = scheduled;
     document.getElementById('f-attended').textContent = attended;
+    document.getElementById('f-applied').textContent = atOrPast('applied');
     document.getElementById('f-joined').textContent = joinedCount;
 
     // Productivity & Conversion -- "–" rather than a divide-by-zero result
@@ -539,18 +564,27 @@
       goalContainer.innerHTML = '<p class="empty-state">No goal set yet. Run the gps_goal insert from schema.sql.</p>';
       return;
     }
-    const current = goal.starting_number + joinedCount;
-    const span = goal.target_number - goal.starting_number;
-    const pct = span > 0 ? Math.min(100, Math.max(0, Math.round(((current - goal.starting_number) / span) * 100))) : 0;
+    // Headcount comes from the Members roster when there is one, so members
+    // who leave (or who joined without going through the CRM) are counted
+    // correctly. Before the roster exists it falls back to the old way.
+    const rosterCount = !memberResult.error && memberResult.count > 0 ? memberResult.count : null;
+    const current = rosterCount !== null ? rosterCount : goal.starting_number + joinedCount;
+    const pct = goal.target_number > 0 ? Math.min(100, Math.max(0, Math.round((current / goal.target_number) * 100))) : 0;
     const daysLeft = Math.ceil((new Date(goal.target_date) - new Date()) / 86400000);
 
+    const paceHtml = Pace.html(Pace.compute({
+      current, target: goal.target_number, daysLeft, attended, joined: joinedCount,
+      recentGuests: (recentResult.data || []).length,
+    }));
+
     goalContainer.innerHTML = `
-      <p style="font-size:1rem; margin:0 0 4px;"><strong>${current}</strong> of <strong>${goal.target_number}</strong> members</p>
+      <p style="font-size:1rem; margin:0 0 4px;"><strong>${current}</strong> of <strong>${goal.target_number}</strong> members${rosterCount !== null ? ' <span class="hint" style="margin:0;">(from your Members list)</span>' : ''}</p>
       <p class="hint">${goal.goal_text}</p>
       <div class="progress-wrap">
-        <div class="progress-labels"><span>${goal.starting_number} start</span><span>${daysLeft >= 0 ? daysLeft + ' days left' : 'Target date passed'}</span><span>${goal.target_number} goal</span></div>
+        <div class="progress-labels"><span>${current} now</span><span>${daysLeft >= 0 ? daysLeft + ' days left' : 'Target date passed'}</span><span>${goal.target_number} goal</span></div>
         <div class="progress-track"><div class="progress-fill" style="width:${pct}%;"></div></div>
       </div>
+      <div class="pace-box">${paceHtml}</div>
     `;
   }
 
@@ -562,6 +596,7 @@
       listEl.innerHTML = `<p class="empty-state">Couldn't load: ${error.message}</p>`;
       return;
     }
+    seatData.open = data || [];
     if (!data.length) {
       listEl.innerHTML = '<p class="empty-state">None yet. Add one below.</p>';
       return;
@@ -804,6 +839,7 @@
         <td>
           ${contactDisplayName(c)}${c.dnc ? ' <span class="badge badge--dnc">DNC</span>' : ''}
           ${tagBadgesHtml(c.id)}
+          ${seatBadgeHtml(c)}
         </td>
         <td>${c.business_name ? (c.contact_name || '') : ''}</td>
         <td style="white-space:nowrap;"><a href="tel:${c.phone}">${c.phone}</a></td>
@@ -1726,7 +1762,7 @@
     const tbody = document.getElementById('visitors-tbody');
     const { data, error } = await client
       .from('visit_registrations')
-      .select('*, emails:visit_emails(kind,status,error,created_at)')
+      .select('*, emails:visit_emails(kind,status,error,created_at), contact:contacts(status)')
       .order('meeting_date', { ascending: false })
       .order('created_at', { ascending: false });
     if (error) {
@@ -1760,7 +1796,9 @@
            <button type="button" class="btn btn--outline btn--sm visitor-act" data-act="no_show" data-id="${r.id}">No-show</button>
            <button type="button" class="btn btn--outline btn--sm visitor-act" data-act="change" data-id="${r.id}">Change date</button>
            <button type="button" class="btn btn--danger btn--sm visitor-act" data-act="cancel" data-id="${r.id}">Cancel</button>`
-        : '';
+        : (r.status === 'attended' && r.contact && r.contact.status === 'visit_attended'
+          ? `<button type="button" class="btn btn--outline btn--sm visitor-act" data-act="applied" data-id="${r.id}">Mark applied</button>`
+          : (r.status === 'attended' && r.contact && r.contact.status === 'applied' ? '<span class="hint">Applied</span>' : ''));
       return `<tr>
         <td style="white-space:nowrap;">${Visits.fmtDate(r.meeting_date)}${r.previous_meeting_date ? `<div class="hint" style="margin:0;">moved from ${Visits.fmtDate(r.previous_meeting_date)}</div>` : ''}</td>
         <td>${Visits.esc(r.first_name)}${r.last_name ? ' ' + Visits.esc(r.last_name) : ''}<div class="hint" style="margin:0;">${Visits.esc(r.email)}${r.phone ? ' | ' + Visits.esc(r.phone) : ''}</div></td>
@@ -1776,7 +1814,7 @@
   document.getElementById('visitors-filter').addEventListener('change', renderVisitors);
 
   document.getElementById('register-guest-admin-btn').addEventListener('click', () => {
-    Visits.register({ client, profile, callers, onChanged: visitsChanged });
+    Visits.register({ client, profile, callers, seats: seatData, onChanged: visitsChanged });
   });
 
   document.getElementById('visitors-tbody').addEventListener('click', async (e) => {
@@ -1792,7 +1830,13 @@
     const contact = currentContacts.find((c) => c.id === reg.contact_id);
     const label = labelOfContact(contact) || reg.company || reg.first_name;
     const act = actBtn.dataset.act;
-    if (act === 'attended' || act === 'no_show') Visits.setAttendance({ client, profile, registration: reg, label, status: act, onChanged: visitsChanged });
+    if (act === 'applied') {
+      const { error } = await client.from('contacts').update({ status: 'applied' }).eq('id', reg.contact_id).eq('status', 'visit_attended');
+      if (error) { Visits.toast(error.message, 'error'); return; }
+      logActivity(client, profile.id, 'application_started', reg.contact_id, label);
+      Visits.toast(`${label} marked as applied.`);
+      visitsChanged();
+    } else if (act === 'attended' || act === 'no_show') Visits.setAttendance({ client, profile, registration: reg, label, status: act, onChanged: visitsChanged });
     else if (act === 'change') Visits.changeDate({ client, profile, registration: reg, label, onChanged: visitsChanged });
     else if (act === 'cancel') Visits.cancel({ client, profile, registration: reg, label, onChanged: visitsChanged });
   });
@@ -1820,7 +1864,7 @@
     box.querySelectorAll('[data-visit-act]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const act = btn.dataset.visitAct;
-        if (act === 'register') Visits.register({ client, profile, contact, callers, onChanged: visitsChanged });
+        if (act === 'register') Visits.register({ client, profile, contact, callers, seats: seatData, onChanged: visitsChanged });
         if (act === 'change') Visits.changeDate({ client, profile, registration: active, label: labelOfContact(contact), onChanged: visitsChanged });
         if (act === 'cancel') Visits.cancel({ client, profile, registration: active, label: labelOfContact(contact), onChanged: visitsChanged });
       });
@@ -1975,6 +2019,7 @@
       }
       initPresence(client, profile);
       await loadCallers();
+      seatData = await Seats.load(client);
       loadDashboard();
       loadOpenCategories();
     } catch (err) {

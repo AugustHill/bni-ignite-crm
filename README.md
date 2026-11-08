@@ -238,6 +238,13 @@ database, neither touches existing data beyond tagging ownership:
   one-row `vote_settings` open/closed switch). Owner-only policies, there
   is deliberately nothing readable by anonymous visitors: the public form
   goes through the `profession-vote` Netlify function instead.
+- `supabase/migration_025_members_directory.sql`: turns the vote roster
+  (`vote_members`, name kept so the live vote form is unaffected) into the
+  chapter members directory by adding company, phone, category (the
+  member's "seat") and keywords. Everyone signed in can read it (callers
+  included), only coordinators and the owner can change it. Also adds
+  "applied" as a contact status between Visit Attended and Joined BNI, and
+  loads the 19 current members' details (safe to run again).
 
 ## How the pieces fit together
 
@@ -371,9 +378,37 @@ database, neither touches existing data beyond tagging ownership:
   pledges (Ungroup undoes it). The tab also shows who has and hasn't
   submitted, lets the owner delete a submission so that member can redo
   it, delete one profession's entries (inside its Details), or clear all
-  results at once (roster and open/closed setting stay), holds the roster (paste names one per line), and has the
-  open/closed switch. The email asking members to vote is sent by the
-  owner from his own mail client, the app sends nothing for this.
+  results at once (roster and open/closed setting stay), and has the
+  open/closed switch. The roster itself now lives on the Members tab. The
+  email asking members to vote is sent by the owner from his own mail
+  client, the app sends nothing for this.
+- **Chapter seats** (`js/seats.js`, `js/members-admin.js`): the **Members**
+  tab in admin.html adds, edits and removes members (name, company, phone,
+  seat, and optional "also matches" keywords). The caller sees the same list
+  without edit buttons on her **Chapter Seats** tab, plus the open seats from
+  the Dashboard's Categories We're Recruiting For. A prospect's industry is
+  compared with each seat's category and keywords (whole words, ignoring
+  capitals, punctuation and plural/-ing/-er endings): a hit shows a "Seat may
+  be taken: Name (Seat)" pill on the caller's card and the admin Contacts
+  row, and a heads-up inside the Register Visitor popup. A hit on an open
+  category shows a flame "Open seat" pill instead, and the caller's queue
+  now sorts "Open seats first" by default (taken seats last). Matching is
+  only ever a warning for a person to judge, never a block, and the keywords
+  field is how the owner tunes it when a seat is missed or over-flagged.
+- **`checkin.html`** (coordinators and owner, phone friendly, linked from the
+  admin header): this Wednesday's guests, plus anyone from an earlier
+  Wednesday not yet marked, each with big Attended and No-show buttons.
+  Attended emails the thank-you, moves the contact to Visit Attended, and
+  puts them in the caller's Follow-Up Pool for the next day (never pushing
+  an earlier follow-up later, and leaving anyone who already applied or
+  joined alone). The Visitors tab does the same and also has **Mark applied**
+  for guests who attended; Applied is its own funnel step on the Dashboard.
+- The Dashboard's goal card now counts members from the Members list (so
+  people who leave, or who joined without going through the CRM, are
+  counted right) and adds a pace line (`js/pace.js`): members still needed,
+  one new member every N weeks, and, once a few guests have attended and one
+  has joined, the guests per week needed at the chapter's own close rate
+  versus the last four weeks.
 - **`private.html`** — owner-only (enforced by RLS, not just a hidden
   button): a to-do list, a link to the owner's own role-based GPS plan,
   and a list of additional private GPS plans (create/delete here, each

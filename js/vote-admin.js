@@ -218,18 +218,7 @@
         <p class="hint">Deleting a submission lets that member submit again.</p>` : '<p class="empty-state">Nobody yet.</p>'}
         <h3 style="margin:18px 0 6px; font-size:0.95rem;">Not yet submitted (${results.notVoted.length})</h3>
         <p>${results.notVoted.length ? results.notVoted.map((m) => esc(m.name)).join(', ') : 'Everyone on the roster has submitted.'}</p>
-      </div>
-
-      <div class="card">
-        <h2>Member roster</h2>
-        <p class="hint" style="margin-top:-6px;">These names fill the dropdown on the form. Paste new names one per line.</p>
-        <div class="form-group">
-          <textarea id="vote-roster-input" rows="4" placeholder="One name per line"></textarea>
-        </div>
-        <button type="button" class="btn btn--primary btn--sm" data-vote-act="add-members">Add to roster</button>
-        <p class="error-msg" id="vote-roster-error"></p>
-        ${state.members.length ? `<div class="vote-roster">${state.members.map((m) => `<span class="vote-chip">${esc(m.name)}${subByMember.has(m.id) ? ' &#10003;' : ''}<button type="button" aria-label="Remove ${esc(m.name)}" data-vote-act="remove-member" data-id="${esc(m.id)}" data-name="${esc(m.name)}" data-voted="${subByMember.has(m.id) ? '1' : ''}">&times;</button></span>`).join('')}</div>
-        <p class="hint">A check mark means that member has submitted. Removing a member also deletes their submission.</p>` : '<p class="empty-state">No members yet. Paste the roster above.</p>'}
+        <p class="hint">To add or remove members, use the Members tab.</p>
       </div>`;
   }
 
@@ -255,25 +244,6 @@
       catch (err) { input.select(); }
     } else if (act === 'toggle-open') {
       const { error } = await client.from('vote_settings').upsert({ id: 1, is_open: !state.isOpen });
-      if (error) return fail(error.message);
-      await load();
-    } else if (act === 'add-members') {
-      const input = document.getElementById('vote-roster-input');
-      const errEl = document.getElementById('vote-roster-error');
-      errEl.textContent = '';
-      const existing = new Set(state.members.map((m) => m.name.toLowerCase()));
-      const names = [];
-      input.value.split(/\r?\n/).map((n) => n.replace(/\s+/g, ' ').trim()).filter(Boolean).forEach((n) => {
-        if (!existing.has(n.toLowerCase()) && !names.some((x) => x.toLowerCase() === n.toLowerCase())) names.push(n);
-      });
-      if (!names.length) { errEl.textContent = 'Enter at least one new name, one per line.'; return; }
-      const { error } = await client.from('vote_members').insert(names.map((name) => ({ name })));
-      if (error) { errEl.textContent = error.message; return; }
-      await load();
-    } else if (act === 'remove-member') {
-      const warn = btn.dataset.voted ? ` Their submission will be deleted too.` : '';
-      if (!window.confirm(`Remove ${btn.dataset.name} from the roster?${warn}`)) return;
-      const { error } = await client.from('vote_members').delete().eq('id', btn.dataset.id);
       if (error) return fail(error.message);
       await load();
     } else if (act === 'delete-vote') {

@@ -1,7 +1,7 @@
 // Visitor registration, shared by caller.html and admin.html (load after
 // js/session.js). Builds its own popup, so neither page needs markup for it.
 //
-//   Visits.register({ client, profile, contact?, callers?, onChanged })
+//   Visits.register({ client, profile, contact?, callers?, seats?, onChanged })
 //   Visits.changeDate({ client, profile, registration, label, onChanged })
 //   Visits.cancel({ client, profile, registration, label, onChanged })
 //   Visits.setAttendance({ client, profile, registration, label, status, onChanged })
@@ -131,6 +131,24 @@
     }
   }
 
+  // After a guest attends, the caller should follow up within a day or two
+  // (the best moment to talk about applying). Puts the contact in the
+  // caller's Follow-Up Pool for the day after the meeting, or for today when
+  // the meeting is already further back. Never pushes an earlier follow-up
+  // later, and leaves anyone who's already applied or joined alone.
+  async function scheduleFollowUp(client, registration) {
+    const { data } = await client.from('contacts').select('status, follow_up_date').eq('id', registration.contact_id).maybeSingle();
+    if (!data || data.status !== 'visit_attended') return;
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const next = new Date(`${registration.meeting_date}T12:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    const dayAfter = next.toISOString().slice(0, 10);
+    const target = dayAfter > today ? dayAfter : today;
+    if (!data.follow_up_date || data.follow_up_date > target) {
+      await client.from('contacts').update({ follow_up_date: target }).eq('id', registration.contact_id);
+    }
+  }
+
   // Shows an email's progress inside the popup: sending, then sent or failed
   // with a Send again button.
   async function showEmailOutcome(container, client, registrationId, kind, toAddress, onChanged) {
@@ -185,6 +203,7 @@
           <div class="form-group"><label>Email (for the welcome)</label><input type="email" id="vr-email" value="${esc(v.email)}"></div>
           ${showAssign ? `<div class="form-group" style="grid-column:1/-1;"><label>Assign to</label><select id="vr-assign">${callers.map((c) => `<option value="${c.id}" ${c.id === v.assigned ? 'selected' : ''}>${esc(c.full_name)}</option>`).join('')}</select></div>` : ''}
         </div>
+        <div id="vr-seat-note"></div>
         <p class="error-msg" id="vr-error"></p>
         <button type="button" class="btn btn--primary" id="vr-submit">Register and Send Welcome Email</button>`;
 
@@ -194,6 +213,15 @@
         phone: body.querySelector('#vr-phone').value, email: body.querySelector('#vr-email').value,
         assigned: showAssign ? body.querySelector('#vr-assign').value : '',
       });
+      // Heads-up when the guest's category looks like a seat a member already
+      // holds (or an open one). Information only, it never blocks anything.
+      const refreshSeatNote = () => {
+        body.querySelector('#vr-seat-note').innerHTML = window.Seats && opts.seats
+          ? window.Seats.noteHtml(window.Seats.match(body.querySelector('#vr-category').value, opts.seats))
+          : '';
+      };
+      body.querySelector('#vr-category').addEventListener('input', refreshSeatNote);
+      refreshSeatNote();
       body.querySelector('#vr-change-date').addEventListener('click', (e) => { e.preventDefault(); pickDate(readForm()); });
       body.querySelector('#vr-submit').addEventListener('click', async () => {
         const btn = body.querySelector('#vr-submit');
@@ -377,8 +405,12 @@
 
     const { error } = await client.from('visit_registrations').update({ status }).eq('id', registration.id);
     if (error) { toast(setupMessage(error), 'error'); return; }
-    if (attended) await moveContact(client, registration.contact_id, 'visit_attended', ['uncontacted', 'no_answer', 'interested', 'visit_scheduled']);
-    else await moveContact(client, registration.contact_id, 'interested', ['visit_scheduled']);
+    if (attended) {
+      await moveContact(client, registration.contact_id, 'visit_attended', ['uncontacted', 'no_answer', 'interested', 'visit_scheduled']);
+      await scheduleFollowUp(client, registration);
+    } else {
+      await moveContact(client, registration.contact_id, 'interested', ['visit_scheduled']);
+    }
     if (opts.onChanged) opts.onChanged();
     if (!attended) { toast(`${name} marked as a no-show.`); return; }
 

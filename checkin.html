@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Check-In | BNI Ignite Growth CRM</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="wrap" style="max-width:760px;">
+  <div class="page-header">
+    <div>
+      <p class="eyebrow">BNI Ignite</p>
+      <h1>Guest Check-In</h1>
+      <p class="subtitle" id="welcome-line">&nbsp;</p>
+    </div>
+    <div class="header-actions">
+      <a class="btn btn--outline btn--sm" href="admin.html">Dashboard</a>
+      <button class="btn btn--outline btn--sm" id="logout-btn">Log Out</button>
+    </div>
+  </div>
+
+  <div class="banner">
+    <span>✅</span>
+    <span>Mark each guest <strong>after the meeting</strong>. <strong>Attended</strong> sends them a thank-you email right away and gives the caller a follow-up for the next day. <strong>No-show</strong> puts them in the caller's No-Show Pool.</span>
+  </div>
+
+  <div id="checkin-list"><p class="empty-state">Loading…</p></div>
+</div>
+
+<script src="js/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/session.js"></script>
+<script src="js/visits.js"></script>
+<script>
+  let client, profile;
+  const listEl = document.getElementById('checkin-list');
+  const esc = Visits.esc;
+
+  // Today's date in the chapter's time zone, as YYYY-MM-DD.
+  const todayEt = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+  function guestCard(r, today) {
+    const name = [r.first_name, r.last_name].filter(Boolean).join(' ');
+    const meta = [r.company, r.category].filter(Boolean).map(esc).join(' · ');
+    const contact = [r.phone ? `<a href="tel:${esc(String(r.phone).replace(/[^0-9+]/g, ''))}">${esc(r.phone)}</a>` : '', r.email ? esc(r.email) : ''].filter(Boolean).join(' · ');
+    return `<div class="checkin-card" data-id="${esc(r.id)}">
+      <h3>${esc(name)}</h3>
+      <p class="checkin-meta">${meta || 'No company listed'}${contact ? `<br>${contact}` : ''}${r.registered_by_name ? `<br>Invited by ${esc(r.registered_by_name)}` : ''}</p>
+      <div class="checkin-actions">
+        <button type="button" class="btn btn--primary" data-act="attended" data-id="${esc(r.id)}">Attended</button>
+        <button type="button" class="btn btn--outline" data-act="no_show" data-id="${esc(r.id)}">No-show</button>
+      </div>
+    </div>`;
+  }
+
+  let rows = [];
+
+  async function load() {
+    const { data, error } = await client
+      .from('visit_registrations')
+      .select('*')
+      .eq('status', 'registered')
+      .order('meeting_date', { ascending: true })
+      .order('created_at', { ascending: true });
+    if (error) {
+      listEl.innerHTML = `<p class="empty-state">Couldn't load the guests: ${esc(error.message)}. If this mentions a missing table, the visitor database update (migration 023) hasn't been run yet.</p>`;
+      return;
+    }
+    rows = data || [];
+    render();
+  }
+
+  function render() {
+    const today = todayEt();
+    const due = rows.filter((r) => r.meeting_date <= today);
+    const upcoming = rows.filter((r) => r.meeting_date > today);
+    const byDate = new Map();
+    due.forEach((r) => { if (!byDate.has(r.meeting_date)) byDate.set(r.meeting_date, []); byDate.get(r.meeting_date).push(r); });
+
+    let html = '';
+    if (!due.length) {
+      html += '<div class="card"><p class="empty-state" style="margin:0;">Nobody needs to be marked right now. Guests registered for today (or for an earlier Wednesday you haven\'t marked yet) show up here.</p></div>';
+    }
+    [...byDate.entries()].forEach(([date, guests]) => {
+      const label = date === today ? 'Today' : 'Needs marking';
+      html += `<p class="checkin-day">${esc(Visits.fmtDate(date))} · ${label} · ${guests.length} guest${guests.length === 1 ? '' : 's'}</p>`;
+      html += guests.map((r) => guestCard(r, today)).join('');
+    });
+
+    if (upcoming.length) {
+      html += '<p class="checkin-day">Coming up</p><div class="card">';
+      html += upcoming.map((r) => `<div style="padding:6px 0; border-bottom:1px solid var(--color-border);"><strong>${esc(Visits.fmtDate(r.meeting_date))}</strong>: ${esc([r.first_name, r.last_name].filter(Boolean).join(' '))}${r.company ? `, ${esc(r.company)}` : ''}</div>`).join('');
+      html += '</div>';
+    }
+    listEl.innerHTML = html;
+  }
+
+  listEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const registration = rows.find((r) => r.id === btn.dataset.id);
+    if (!registration) return;
+    Visits.setAttendance({ client, profile, registration, status: btn.dataset.act, onChanged: load });
+  });
+
+  document.getElementById('logout-btn').addEventListener('click', logout);
+
+  (async () => {
+    try {
+      const result = await requireRole('coordinator');
+      client = result.client;
+      profile = result.profile;
+      document.getElementById('welcome-line').textContent = `${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/New_York' })}`;
+      load();
+    } catch (err) {
+      console.error(err.message);
+    }
+  })();
+</script>
+</body>
+</html>
