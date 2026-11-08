@@ -245,6 +245,10 @@ database, neither touches existing data beyond tagging ownership:
   included), only coordinators and the owner can change it. Also adds
   "applied" as a contact status between Visit Attended and Joined BNI, and
   loads the 19 current members' details (safe to run again).
+- `supabase/migration_026_dev_blog.sql`: adds `dev_posts` for the Dev Blog.
+  Everyone logged in can read published posts, only the owner can write,
+  edit or delete them and only the owner sees drafts. Starts out with the
+  app's history so far (added only when the table is empty).
 
 ## How the pieces fit together
 
@@ -395,6 +399,17 @@ database, neither touches existing data beyond tagging ownership:
   now sorts "Open seats first" by default (taken seats last). Matching is
   only ever a warning for a person to judge, never a block, and the keywords
   field is how the owner tunes it when a seat is missed or over-flagged.
+- **`updates.html`** (the Dev Blog, any logged-in role, `js/updates.js`):
+  short "what's new" posts, newest first, each with a type (New, Improved,
+  Fixed, Note), date and author. The header of admin.html and caller.html
+  has a Dev Blog link that gets a small dot when there's a published post
+  the person hasn't looked at yet (remembered per person in that browser,
+  so it can come back on a new device). Only the owner sees the editor: new
+  post, save as draft, publish, move back to drafts, edit, delete. Post text
+  is plain: a blank line starts a paragraph, a line starting with "- " is a
+  bullet, **two asterisks** make bold, web addresses become links, and any
+  HTML typed into a post is shown as text rather than run. It is not
+  public: you have to be logged in to read it.
 - **`checkin.html`** (coordinators and owner, phone friendly, linked from the
   admin header): this Wednesday's guests, plus anyone from an earlier
   Wednesday not yet marked, each with big Attended and No-show buttons.

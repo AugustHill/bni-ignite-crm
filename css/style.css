@@ -266,3 +266,25 @@ tr:last-child td { border-bottom: none; }
 .checkin-done--yes { color: var(--color-success); }
 .checkin-done--no { color: var(--color-text-muted); }
 .checkin-day { margin: 22px 0 10px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-muted); font-weight: 700; }
+
+/* Dev Blog (updates.html) */
+.dev-post { margin-bottom: 18px; }
+.dev-post-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 6px; }
+.dev-post-title { margin: 0 0 8px; font-size: 1.15rem; text-transform: none; letter-spacing: 0; font-family: var(--font-heading); }
+.dev-post-body p { margin: 0 0 10px; line-height: 1.55; }
+.dev-post-body ul { margin: 0 0 10px; padding-left: 22px; line-height: 1.55; }
+.dev-post-body li { margin: 3px 0; }
+.dev-post-actions { display: flex; align-items: center; gap: 14px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--color-border); }
+.dev-post--draft { border-style: dashed; opacity: 0.9; }
+.badge--dev-new { background: #dcf0e4; color: #1b6b4a; }
+.badge--dev-improved { background: #dcecff; color: #1c4f8c; }
+.badge--dev-fixed { background: #fdeecb; color: #8a5c05; }
+.badge--dev-note { background: var(--color-bg-alt); color: var(--color-text-muted); }
+@media (prefers-color-scheme: dark) {
+  .badge--dev-new { background: #1a3527; color: #7fd4a8; }
+  .badge--dev-improved { background: #1c3350; color: #a9c9f0; }
+  .badge--dev-fixed { background: #4a3a15; color: #f0cf8f; }
+}
+.has-new::after { content: ''; display: inline-block; width: 8px; height: 8px; margin-left: 7px; border-radius: 50%; background: var(--color-accent); vertical-align: middle; }
+.card h2.dev-post-title { display: block; font-size: 1.2rem; text-transform: none; letter-spacing: 0; color: var(--color-text); font-weight: 700; line-height: 1.3; }
+.card h2.dev-post-title::before { display: none; }

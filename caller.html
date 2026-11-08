@@ -38,6 +38,7 @@
       <p class="subtitle" id="welcome-line">&nbsp;</p>
     </div>
     <div class="header-actions">
+      <a class="btn btn--outline btn--sm" id="updates-link" href="updates.html">Dev Blog</a>
       <a class="btn btn--outline btn--sm" href="scripts.html">Script Book</a>
       <a class="btn btn--outline btn--sm" href="gps-plan.html">Your GPS Plan</a>
       <a class="btn btn--outline btn--sm" href="account.html">Account</a>
@@ -207,6 +208,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/session.js"></script>
 <script src="js/seats.js"></script>
+<script src="js/updates.js"></script>
 <script src="js/visits.js"></script>
 <script>
   const OUTCOME_LABELS = {
@@ -1004,6 +1006,7 @@
       client = result.client;
       profile = result.profile;
       document.getElementById('welcome-line').textContent = `Welcome back, ${profile.full_name}.`;
+      Updates.markNew(client, document.getElementById('updates-link'), profile.id);
       initPresence(client, profile);
       document.getElementById('hours-date').valueAsDate = new Date();
       await loadSeats();

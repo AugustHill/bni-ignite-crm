@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Dev Blog | BNI Ignite Growth CRM</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="wrap" style="max-width:800px;">
+  <div class="page-header">
+    <div>
+      <p class="eyebrow">BNI Ignite</p>
+      <h1>Dev Blog</h1>
+      <p class="subtitle">What's new in the Growth CRM</p>
+    </div>
+    <div class="header-actions">
+      <a class="btn btn--outline btn--sm" id="back-link" href="index.html">Back</a>
+      <button class="btn btn--outline btn--sm" id="logout-btn">Log Out</button>
+    </div>
+  </div>
+
+  <div id="dev-root"><p class="empty-state">Loading…</p></div>
+</div>
+
+<script src="js/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/session.js"></script>
+<script src="js/updates.js"></script>
+<script>
+  document.getElementById('logout-btn').addEventListener('click', logout);
+
+  (async () => {
+    try {
+      // Any logged-in role can read the Dev Blog.
+      const { client, profile } = await requireSession();
+      document.getElementById('back-link').href = profile.role === 'caller' ? 'caller.html' : 'admin.html';
+      document.getElementById('back-link').textContent = profile.role === 'caller' ? 'Back to Your Calls' : 'Back to Dashboard';
+      Updates.mount(client, profile, document.getElementById('dev-root'));
+    } catch (err) {
+      console.error(err.message);
+    }
+  })();
+</script>
+</body>
+</html>
