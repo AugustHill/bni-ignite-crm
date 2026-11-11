@@ -109,6 +109,17 @@ company domain to verify. Nothing in the app stores that Gmail password.
    string from step 3).
 6. Redeploy the site so the new variables load.
 
+Who is blind-copied: every visitor email except the day-before reminder
+goes BCC to derrick.mckenzie@kw.com, to every other owner or coordinator
+with a login, and to whoever registered the visitor (the caller, or an
+admin). The addresses are the ones people log in with, looked up by the
+Netlify function at send time (`bccRecipients()` in
+`netlify/lib/visit-mail.js`), so a new admin is copied automatically and
+nothing needs to be set up per person. The visitor is never in the BCC, the
+list is de-duplicated and capped at 20, and if the lookup fails the email
+still goes out, copying only Derrick. Replies still go to Derrick. Each
+copy counts toward the Gmail relay's daily limit of about 100 recipients.
+
 The day-before reminder is a scheduled Netlify function
 (`netlify/functions/visit-reminders.js`, configured in `netlify.toml`). It
 runs Tuesday mornings at 10am Eastern (9am in winter) and emails everyone

@@ -242,9 +242,9 @@ function firstName(reg) {
 
 // ---------- the five emails ----------
 
-// Returns { subject, html, text, ics?, bcc } where bcc says whether Derrick
-// is blind-copied. Reminders don't BCC him (one per visitor would flood his
-// inbox); everything else does.
+// Returns { subject, html, text, ics?, bcc } where bcc says whether the staff
+// are blind-copied (see bccRecipients for who). Reminders don't BCC anyone
+// (one per visitor would flood every inbox); everything else does.
 function buildEmail(kind, reg, nowMs) {
   const name = esc(firstName(reg));
 
@@ -421,6 +421,53 @@ async function sb(path, options) {
   return { ok: response.ok, status: response.status, body };
 }
 
+// The login email address for one user, from the login system (service
+// role), or null if it can't be found.
+async function loginEmail(userId) {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  try {
+    const response = await fetch(`${process.env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+    });
+    if (!response.ok) return null;
+    const user = await response.json();
+    return user && user.email ? String(user.email).trim() : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+const MAX_BCC = 20;
+
+// Who is blind-copied on a visitor email: Derrick always, every other admin
+// (owner or coordinator) who has a login, and whoever registered the
+// visitor. The addresses are the ones people log in with. Never the visitor
+// themselves, no duplicates, and a lookup problem never blocks the email:
+// it just falls back to Derrick alone.
+async function bccRecipients(reg) {
+  const found = [];
+  try {
+    const ids = new Set();
+    const admins = await sb('profiles?role=in.(owner,coordinator)&select=id');
+    if (admins.ok && Array.isArray(admins.body)) admins.body.forEach((p) => ids.add(p.id));
+    if (reg.registered_by) ids.add(reg.registered_by);
+    const emails = await Promise.all([...ids].map(loginEmail));
+    emails.forEach((e) => { if (e) found.push(e); });
+  } catch (err) {
+    // fall through with whatever was found
+  }
+  const visitor = String(reg.email || '').trim().toLowerCase();
+  const seen = new Set();
+  return [MEETING.bcc, ...found]
+    .filter((e) => {
+      const key = String(e || '').trim().toLowerCase();
+      if (!key || key === visitor || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, MAX_BCC);
+}
+
 // Builds, sends, and logs one email for a registration. Returns { ok, error? }.
 async function deliver(reg, kind, options) {
   const opts = options || {};
@@ -433,7 +480,10 @@ async function deliver(reg, kind, options) {
     html: email.html,
     text: email.text,
   };
-  if (email.bcc) message.bcc = MEETING.bcc;
+  if (email.bcc) {
+    const copies = await bccRecipients(reg);
+    if (copies.length) message.bcc = copies.join(',');
+  }
   if (email.ics) message.ics = email.ics;
 
   const result = await sendViaRelay(message, { timeoutMs: opts.timeoutMs });
@@ -455,5 +505,5 @@ async function deliver(reg, kind, options) {
 module.exports = {
   MEETING, KIND_REQUIRES_STATUS,
   esc, fmtLong, fmtShort, addDaysISO, todayET, etToUtcMs, icsStamp,
-  googleCalendarUrl, buildIcs, buildEmail, sendViaRelay, sb, deliver,
+  googleCalendarUrl, buildIcs, buildEmail, sendViaRelay, sb, bccRecipients, deliver,
 };
